@@ -30,6 +30,12 @@ class _GenogramCanvasState extends State<GenogramCanvas> {
   Offset _pinchStartOffset = Offset.zero;
   double _pinchStartDist = 0;
 
+  // Marquee state (in world coordinates)
+  Offset? _marqueeStart;
+  Offset? _marqueeEnd;
+  Set<String> _marqueeBaseSelection = const <String>{};
+  bool _marqueeAdditive = false;
+
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<GenogramProvider>();
@@ -48,11 +54,14 @@ class _GenogramCanvasState extends State<GenogramCanvas> {
           child: MouseRegion(
             cursor: provider.mode == AppMode.connect
                 ? SystemMouseCursors.precise
-                : SystemMouseCursors.grab,
+                : provider.mode == AppMode.marquee
+                    ? SystemMouseCursors.cell
+                    : SystemMouseCursors.grab,
             child: CustomPaint(
               size: size,
               painter: _GenogramPainter(
                 provider: provider,
+                marqueeRect: _currentMarqueeRect(),
               ),
               child: const SizedBox.expand(),
             ),
@@ -75,6 +84,8 @@ class _GenogramCanvasState extends State<GenogramCanvas> {
         provider.handleConnectTap(nodeId, onReadyToPick: (src, tgt) {
           _showRelationshipPicker(context, src, tgt, provider);
         });
+      } else if (provider.mode == AppMode.marquee) {
+        provider.togglePersonInMultiSelection(nodeId);
       } else {
         provider.selectPerson(nodeId);
       }
@@ -89,7 +100,11 @@ class _GenogramCanvasState extends State<GenogramCanvas> {
     }
 
     // Tap on empty space
-    provider.clearSelection();
+    if (provider.mode == AppMode.marquee) {
+      provider.clearMultiSelection();
+    } else {
+      provider.clearSelection();
+    }
   }
 
   void _onDoubleTap(Offset local, GenogramProvider provider, BuildContext context) {
@@ -124,6 +139,21 @@ class _GenogramCanvasState extends State<GenogramCanvas> {
     final worldPos = _toWorld(d.localFocalPoint, provider);
     final nodeId = _hitTestNode(worldPos, provider);
 
+    // In marquee mode, dragging on empty space starts a selection rectangle.
+    // Dragging on a node still moves the node.
+    if (provider.mode == AppMode.marquee &&
+        nodeId == null &&
+        d.pointerCount == 1) {
+      _isNodeDrag = false;
+      _draggingNodeId = null;
+      _marqueeStart = worldPos;
+      _marqueeEnd = worldPos;
+      _marqueeBaseSelection = provider.selectedPersonIds.toSet();
+      _marqueeAdditive = _marqueeBaseSelection.isNotEmpty;
+      setState(() {});
+      return;
+    }
+
     if (nodeId != null && d.pointerCount == 1) {
       _isNodeDrag = true;
       _draggingNodeId = nodeId;
@@ -143,6 +173,12 @@ class _GenogramCanvasState extends State<GenogramCanvas> {
   }
 
   void _onScaleUpdate(ScaleUpdateDetails d, GenogramProvider provider) {
+    if (_marqueeStart != null && d.pointerCount == 1) {
+      _marqueeEnd = _toWorld(d.localFocalPoint, provider);
+      setState(() {});
+      return;
+    }
+
     if (_isNodeDrag && _draggingNodeId != null && d.pointerCount == 1) {
       final delta = (d.localFocalPoint - _dragTouchStart) / provider.viewScale;
       final newPos = _dragNodeStart + delta;
@@ -169,8 +205,31 @@ class _GenogramCanvasState extends State<GenogramCanvas> {
   }
 
   void _onScaleEnd(GenogramProvider provider) {
+    // Commit marquee selection.
+    if (_marqueeStart != null && _marqueeEnd != null) {
+      final rect = Rect.fromPoints(_marqueeStart!, _marqueeEnd!);
+      final hit = <String>{};
+      for (final p in provider.persons.values) {
+        final nodeRect = Rect.fromLTWH(
+          p.position.dx, p.position.dy, kNodeSize, kNodeSize,
+        );
+        if (rect.overlaps(nodeRect)) hit.add(p.id);
+      }
+      final next = _marqueeAdditive
+          ? (_marqueeBaseSelection.toSet()..addAll(hit))
+          : hit;
+      provider.setMultiSelection(next);
+    }
+    _marqueeStart = null;
+    _marqueeEnd = null;
     _draggingNodeId = null;
     _isNodeDrag = false;
+    setState(() {});
+  }
+
+  Rect? _currentMarqueeRect() {
+    if (_marqueeStart == null || _marqueeEnd == null) return null;
+    return Rect.fromPoints(_marqueeStart!, _marqueeEnd!);
   }
 
   // ----------------------------------------------------------------
@@ -292,8 +351,10 @@ class _GenogramCanvasState extends State<GenogramCanvas> {
 // ----------------------------------------------------------------
 class _GenogramPainter extends CustomPainter {
   final GenogramProvider provider;
+  final Rect? marqueeRect;
 
-  _GenogramPainter({required this.provider}) : super(repaint: provider);
+  _GenogramPainter({required this.provider, this.marqueeRect})
+      : super(repaint: provider);
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -324,12 +385,15 @@ class _GenogramPainter extends CustomPainter {
     // Key examples: "p1" for a single parent, "p1|p2" for a couple.
     final parentChildByParents = <String, List<Relationship>>{};
     final childParents = <String, List<String>>{};
+    final siblingRels = <Relationship>[];
     final otherRels = <Relationship>[];
     for (final rel in provider.relationships.values) {
       if (rel.type == RelationshipType.parentChild) {
         childParents
             .putIfAbsent(rel.targetId, () => [])
             .add(rel.sourceId);
+      } else if (rel.type == RelationshipType.sibling) {
+        siblingRels.add(rel);
       } else {
         otherRels.add(rel);
       }
@@ -408,6 +472,65 @@ class _GenogramPainter extends CustomPainter {
       _paintFamilyGroup(canvas, parents, children, anySelected);
     });
 
+    // Draw sibling relationships. Connected components of >=3 siblings share
+    // one sibling bar instead of producing N*(N-1)/2 criss-crossing lines.
+    if (siblingRels.isNotEmpty) {
+      final parent = <String, String>{};
+      String find(String x) {
+        var r = x;
+        while (parent[r] != null && parent[r] != r) {
+          r = parent[r]!;
+        }
+        var cur = x;
+        while (parent[cur] != null && parent[cur] != cur) {
+          final next = parent[cur]!;
+          parent[cur] = r;
+          cur = next;
+        }
+        return r;
+      }
+      void union(String a, String b) {
+        parent.putIfAbsent(a, () => a);
+        parent.putIfAbsent(b, () => b);
+        final ra = find(a), rb = find(b);
+        if (ra != rb) parent[ra] = rb;
+      }
+      for (final r in siblingRels) {
+        union(r.sourceId, r.targetId);
+      }
+      // Bucket nodes by component root and bucket rels by component root.
+      final compNodes = <String, Set<String>>{};
+      final compRels = <String, List<Relationship>>{};
+      for (final r in siblingRels) {
+        final root = find(r.sourceId);
+        compNodes.putIfAbsent(root, () => <String>{})
+          ..add(r.sourceId)
+          ..add(r.targetId);
+        compRels.putIfAbsent(root, () => []).add(r);
+      }
+      compNodes.forEach((root, ids) {
+        final people = <Person>[];
+        for (final id in ids) {
+          final p = provider.persons[id];
+          if (p != null) people.add(p);
+        }
+        if (people.length < 2) return;
+        final rels = compRels[root]!;
+        final selected = rels.any(
+          (r) => provider.selectedRelationshipId == r.id,
+        );
+        if (people.length == 2) {
+          // Just a pair — draw the regular single line.
+          RelationPainter.paintRelationship(
+            canvas, rels.first, people[0], people[1],
+            selected: selected,
+          );
+        } else {
+          _paintSiblingBar(canvas, people, selected);
+        }
+      });
+    }
+
     // Draw remaining relationships.
     for (final rel in otherRels) {
       final src = provider.persons[rel.sourceId];
@@ -422,13 +545,28 @@ class _GenogramPainter extends CustomPainter {
     // Draw nodes
     for (final person in provider.persons.values) {
       final center = person.position + const Offset(kNodeSize / 2, kNodeSize / 2);
+      final isMulti = provider.selectedPersonIds.contains(person.id);
       NodePainter.paintPerson(
         canvas,
         person,
         center,
-        selected: provider.selectedPersonId == person.id,
+        selected: provider.selectedPersonId == person.id || isMulti,
         isConnectSource: provider.connectSourceId == person.id,
       );
+    }
+
+    // Marquee rectangle overlay (in world coords).
+    if (marqueeRect != null) {
+      final r = marqueeRect!;
+      final fill = Paint()
+        ..color = kAccentGreen.withOpacity(0.10)
+        ..style = PaintingStyle.fill;
+      final stroke = Paint()
+        ..color = kAccentGreen.withOpacity(0.7)
+        ..strokeWidth = 1.0
+        ..style = PaintingStyle.stroke;
+      canvas.drawRect(r, fill);
+      canvas.drawRect(r, stroke);
     }
 
     canvas.restore();
@@ -493,6 +631,47 @@ class _GenogramPainter extends CustomPainter {
       // Drop from bar to each child.
       for (final top in childTops) {
         canvas.drawLine(Offset(top.dx, barY), top, p);
+      }
+    }
+
+    if (selected) {
+      final hi = Paint()
+        ..color = kAccentGreen.withOpacity(0.25)
+        ..strokeWidth = 8
+        ..style = PaintingStyle.stroke;
+      drawAll(hi);
+    }
+    drawAll(paint);
+  }
+
+  // Draw a sibling component (3+ people) sharing one horizontal sibling bar.
+  // The bar sits above the topmost sibling, with verticals dropping down to
+  // the top-center of each node.
+  void _paintSiblingBar(
+    Canvas canvas,
+    List<Person> siblings,
+    bool selected,
+  ) {
+    final color = kRelationshipColors[RelationshipType.sibling] ?? kText2;
+    final tops = siblings
+        .map((p) => Offset(p.position.dx + kNodeSize / 2, p.position.dy))
+        .toList();
+    final topMostY = tops.map((p) => p.dy).reduce((a, b) => a < b ? a : b);
+    // Bar 18px above the topmost sibling.
+    final barY = topMostY - 18;
+    final minX = tops.map((p) => p.dx).reduce((a, b) => a < b ? a : b);
+    final maxX = tops.map((p) => p.dx).reduce((a, b) => a > b ? a : b);
+
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 1.5
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+
+    void drawAll(Paint p) {
+      canvas.drawLine(Offset(minX, barY), Offset(maxX, barY), p);
+      for (final t in tops) {
+        canvas.drawLine(Offset(t.dx, barY), t, p);
       }
     }
 

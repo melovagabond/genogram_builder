@@ -62,6 +62,36 @@ class _MainScreenState extends State<MainScreen> {
                 ),
               ),
             ),
+          if (provider.mode == AppMode.marquee)
+            Positioned(
+              top: 8, left: 0, right: 0,
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: kAccentGreen.withOpacity(0.15),
+                    border: Border.all(color: kAccentGreen.withOpacity(0.5)),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    provider.selectedPersonIds.isEmpty
+                        ? 'DRAG to select  /  TAP to toggle'
+                        : '${provider.selectedPersonIds.length} selected',
+                    style: const TextStyle(
+                      color: kAccentGreen, fontSize: 12,
+                      fontFamily: 'monospace', letterSpacing: 1,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          if (provider.selectedPersonIds.isNotEmpty)
+            Positioned(
+              bottom: 36, left: 0, right: 0,
+              child: Center(
+                child: _MultiSelectActionBar(provider: provider),
+              ),
+            ),
         ],
       ),
       floatingActionButton: _QuickAddFab(provider: provider),
@@ -87,6 +117,7 @@ class _AppBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final provider = context.watch<GenogramProvider>();
     final isConnect = provider.mode == AppMode.connect;
+    final isMarquee = provider.mode == AppMode.marquee;
 
     return AppBar(
       titleSpacing: 12,
@@ -102,6 +133,21 @@ class _AppBar extends StatelessWidget {
           () => provider.toggleConnectMode(),
           active: isConnect,
           activeColor: kAccentOrange,
+        ),
+        _tbBtn(
+          context,
+          isMarquee ? 'Done' : 'Select',
+          () => provider.setMode(isMarquee ? AppMode.select : AppMode.marquee),
+          active: isMarquee,
+          activeColor: kAccentGreen,
+        ),
+        Opacity(
+          opacity: provider.canUndo ? 1.0 : 0.35,
+          child: _tbBtn(
+            context,
+            'Undo',
+            provider.canUndo ? provider.undo : () {},
+          ),
         ),
         _divider(),
         _tbBtn(context, 'Layout', () {
@@ -296,6 +342,213 @@ class _StatusBar extends StatelessWidget {
     ),
     child: Text(text, style: TextStyle(color: color, fontSize: 8, fontFamily: 'monospace')),
   );
+}
+
+// ----------------------------------------------------------------
+// Multi-select action bar
+// ----------------------------------------------------------------
+class _MultiSelectActionBar extends StatelessWidget {
+  final GenogramProvider provider;
+  const _MultiSelectActionBar({required this.provider});
+
+  @override
+  Widget build(BuildContext context) {
+    final count = provider.selectedPersonIds.length;
+    return Material(
+      color: Colors.transparent,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: kSurface,
+          border: Border.all(color: kBorder),
+          borderRadius: BorderRadius.circular(8),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.4),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              child: Text(
+                '$count selected',
+                style: const TextStyle(
+                  color: kText, fontSize: 12,
+                  fontFamily: 'monospace', letterSpacing: 1,
+                ),
+              ),
+            ),
+            const SizedBox(width: 6),
+            _barBtn(
+              label: 'Link All',
+              color: kAccentOrange,
+              enabled: count >= 2,
+              onTap: () => _showLinkAllPicker(context, provider),
+            ),
+            const SizedBox(width: 6),
+            _barBtn(
+              label: 'Delete',
+              color: kAccentRed,
+              enabled: count >= 1,
+              onTap: () => _confirmDelete(context, provider),
+            ),
+            const SizedBox(width: 6),
+            _barBtn(
+              label: 'Clear',
+              color: kText2,
+              onTap: () => provider.clearMultiSelection(),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _barBtn({
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+    bool enabled = true,
+  }) {
+    return Opacity(
+      opacity: enabled ? 1 : 0.4,
+      child: GestureDetector(
+        onTap: enabled ? onTap : null,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: BoxDecoration(
+            color: kSurface2,
+            borderRadius: BorderRadius.circular(4),
+            border: Border.all(color: color.withOpacity(0.5)),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              color: color, fontSize: 11,
+              fontFamily: 'monospace', letterSpacing: 1,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _confirmDelete(BuildContext context, GenogramProvider provider) {
+    final n = provider.selectedPersonIds.length;
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: kSurface,
+        title: Text('Delete $n people?', style: const TextStyle(color: kText)),
+        content: const Text(
+          'This will also remove every relationship attached to them.',
+          style: TextStyle(color: kText2),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancel', style: TextStyle(color: kText2)),
+          ),
+          TextButton(
+            onPressed: () {
+              provider.deleteSelectedPersons();
+              Navigator.of(ctx).pop();
+            },
+            child: const Text('Delete', style: TextStyle(color: kAccentRed)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showLinkAllPicker(BuildContext context, GenogramProvider provider) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: kSurface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+        side: BorderSide(color: kBorder),
+      ),
+      builder: (_) {
+        final Map<String, List<RelationshipType>> grouped = {};
+        for (final t in RelationshipType.values) {
+          final cat = kRelationshipDefs[t]!.category;
+          grouped.putIfAbsent(cat, () => []).add(t);
+        }
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'Link all ${provider.selectedPersonIds.length} people pairwise as…',
+                    style: const TextStyle(color: kText, fontSize: 13),
+                  ),
+                  const SizedBox(height: 8),
+                  for (final entry in grouped.entries) ...[
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8, bottom: 4),
+                      child: Text(
+                        entry.key.toUpperCase(),
+                        style: const TextStyle(
+                          color: kText2, fontSize: 10,
+                          fontFamily: 'monospace', letterSpacing: 1.5,
+                        ),
+                      ),
+                    ),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        for (final t in entry.value)
+                          GestureDetector(
+                            onTap: () {
+                              final added = provider.connectSelectedAs(t);
+                              Navigator.of(context).pop();
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    added == 0
+                                        ? 'No new links added (pairs already linked).'
+                                        : 'Added $added link${added == 1 ? '' : 's'}.',
+                                  ),
+                                ),
+                              );
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: kSurface2,
+                                borderRadius: BorderRadius.circular(4),
+                                border: Border.all(color: kBorder),
+                              ),
+                              child: Text(
+                                kRelationshipDefs[t]!.label,
+                                style: const TextStyle(
+                                    color: kText, fontSize: 11),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
 }
 
 // ----------------------------------------------------------------

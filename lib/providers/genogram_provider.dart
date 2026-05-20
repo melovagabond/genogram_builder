@@ -4,7 +4,7 @@ import '../models/genogram_state.dart';
 import '../models/person.dart';
 import '../models/relationship.dart';
 
-enum AppMode { select, connect }
+enum AppMode { select, connect, marquee }
 
 class GenogramProvider extends ChangeNotifier {
   GenogramState _state = GenogramState.empty();
@@ -12,8 +12,45 @@ class GenogramProvider extends ChangeNotifier {
   String? _selectedPersonId;
   String? _selectedRelationshipId;
   String? _connectSourceId;
+  final Set<String> _selectedPersonIds = <String>{};
   Offset _viewOffset = Offset.zero;
   double _viewScale = 1.0;
+
+  // Undo stack (state snapshots taken just before each mutation).
+  final List<GenogramState> _undoStack = <GenogramState>[];
+  static const int _undoLimit = 100;
+  // Coalesce repeated mutations (e.g. dragging a node) into one undo entry.
+  String? _undoCoalesceKey;
+  DateTime _lastUndoPush = DateTime.fromMillisecondsSinceEpoch(0);
+
+  void _pushUndo({String? coalesceKey}) {
+    final now = DateTime.now();
+    if (coalesceKey != null &&
+        coalesceKey == _undoCoalesceKey &&
+        now.difference(_lastUndoPush) < const Duration(milliseconds: 500)) {
+      _lastUndoPush = now;
+      return;
+    }
+    _undoStack.add(_state);
+    if (_undoStack.length > _undoLimit) {
+      _undoStack.removeAt(0);
+    }
+    _undoCoalesceKey = coalesceKey;
+    _lastUndoPush = now;
+  }
+
+  bool get canUndo => _undoStack.isNotEmpty;
+
+  void undo() {
+    if (_undoStack.isEmpty) return;
+    _state = _undoStack.removeLast();
+    _undoCoalesceKey = null;
+    _selectedPersonId = null;
+    _selectedRelationshipId = null;
+    _selectedPersonIds.clear();
+    _connectSourceId = null;
+    notifyListeners();
+  }
 
   // ----------------------------------------------------------------
   // Getters
@@ -23,6 +60,7 @@ class GenogramProvider extends ChangeNotifier {
   String? get selectedPersonId => _selectedPersonId;
   String? get selectedRelationshipId => _selectedRelationshipId;
   String? get connectSourceId => _connectSourceId;
+  Set<String> get selectedPersonIds => _selectedPersonIds;
   Offset get viewOffset => _viewOffset;
   double get viewScale => _viewScale;
 
@@ -55,6 +93,7 @@ class GenogramProvider extends ChangeNotifier {
   // ----------------------------------------------------------------
   String addPerson(Gender gender) {
     if (!_state.canAddPerson) return '';
+    _pushUndo();
     final id = _nextPersonId();
     final person = Person(
       id: id,
@@ -71,6 +110,7 @@ class GenogramProvider extends ChangeNotifier {
   }
 
   void updatePerson(Person person) {
+    _pushUndo(coalesceKey: 'updatePerson:${person.id}');
     final updated = Map<String, Person>.from(_state.persons)..[person.id] = person;
     _state = _state.copyWith(persons: updated);
     notifyListeners();
@@ -79,6 +119,7 @@ class GenogramProvider extends ChangeNotifier {
   void movePerson(String id, Offset delta) {
     final person = _state.persons[id];
     if (person == null) return;
+    _pushUndo(coalesceKey: 'movePerson:$id');
     final updated = Map<String, Person>.from(_state.persons)
       ..[id] = person.copyWith(position: person.position + delta);
     _state = _state.copyWith(persons: updated);
@@ -86,6 +127,7 @@ class GenogramProvider extends ChangeNotifier {
   }
 
   void deletePerson(String id) {
+    _pushUndo();
     final updatedPersons = Map<String, Person>.from(_state.persons)..remove(id);
     // Cascade delete attached relationships
     final updatedRels = Map<String, Relationship>.from(_state.relationships)
@@ -99,6 +141,7 @@ class GenogramProvider extends ChangeNotifier {
   // Relationship CRUD
   // ----------------------------------------------------------------
   String addRelationship(String sourceId, String targetId, RelationshipType type) {
+    _pushUndo();
     final id = _nextRelId();
     final rel = Relationship(
       id: id,
@@ -113,12 +156,14 @@ class GenogramProvider extends ChangeNotifier {
   }
 
   void updateRelationship(Relationship rel) {
+    _pushUndo();
     final updated = Map<String, Relationship>.from(_state.relationships)..[rel.id] = rel;
     _state = _state.copyWith(relationships: updated);
     notifyListeners();
   }
 
   void deleteRelationship(String id) {
+    _pushUndo();
     final updated = Map<String, Relationship>.from(_state.relationships)..remove(id);
     _state = _state.copyWith(relationships: updated);
     if (_selectedRelationshipId == id) _selectedRelationshipId = null;
@@ -143,7 +188,82 @@ class GenogramProvider extends ChangeNotifier {
   void clearSelection() {
     _selectedPersonId = null;
     _selectedRelationshipId = null;
+    _selectedPersonIds.clear();
     notifyListeners();
+  }
+
+  // ----------------------------------------------------------------
+  // Multi-selection
+  // ----------------------------------------------------------------
+  void togglePersonInMultiSelection(String id) {
+    if (_selectedPersonIds.contains(id)) {
+      _selectedPersonIds.remove(id);
+    } else {
+      _selectedPersonIds.add(id);
+    }
+    _selectedPersonId = null;
+    _selectedRelationshipId = null;
+    notifyListeners();
+  }
+
+  void setMultiSelection(Set<String> ids) {
+    _selectedPersonIds
+      ..clear()
+      ..addAll(ids);
+    _selectedPersonId = null;
+    _selectedRelationshipId = null;
+    notifyListeners();
+  }
+
+  void clearMultiSelection() {
+    if (_selectedPersonIds.isEmpty) return;
+    _selectedPersonIds.clear();
+    notifyListeners();
+  }
+
+  void deleteSelectedPersons() {
+    if (_selectedPersonIds.isEmpty) return;
+    _pushUndo();
+    final ids = _selectedPersonIds.toSet();
+    final updatedPersons = Map<String, Person>.from(_state.persons)
+      ..removeWhere((id, _) => ids.contains(id));
+    final updatedRels = Map<String, Relationship>.from(_state.relationships)
+      ..removeWhere((_, r) => ids.contains(r.sourceId) || ids.contains(r.targetId));
+    _state = _state.copyWith(persons: updatedPersons, relationships: updatedRels);
+    _selectedPersonIds.clear();
+    if (_selectedPersonId != null && ids.contains(_selectedPersonId)) {
+      _selectedPersonId = null;
+    }
+    notifyListeners();
+  }
+
+  /// Apply [type] as a relationship between every pair of selected nodes.
+  /// Skips pairs that already have any relationship between them.
+  int connectSelectedAs(RelationshipType type) {
+    if (_selectedPersonIds.length < 2) return 0;
+    _pushUndo();
+    final ids = _selectedPersonIds.toList();
+    final updatedRels = Map<String, Relationship>.from(_state.relationships);
+    int added = 0;
+    bool pairExists(String a, String b) => updatedRels.values.any((r) =>
+        (r.sourceId == a && r.targetId == b) ||
+        (r.sourceId == b && r.targetId == a));
+    for (var i = 0; i < ids.length; i++) {
+      for (var j = i + 1; j < ids.length; j++) {
+        if (pairExists(ids[i], ids[j])) continue;
+        final id = _nextRelId();
+        updatedRels[id] = Relationship(
+          id: id,
+          sourceId: ids[i],
+          targetId: ids[j],
+          type: type,
+        );
+        added++;
+      }
+    }
+    _state = _state.copyWith(relationships: updatedRels);
+    notifyListeners();
+    return added;
   }
 
   // ----------------------------------------------------------------
@@ -152,6 +272,7 @@ class GenogramProvider extends ChangeNotifier {
   void setMode(AppMode mode) {
     _mode = mode;
     _connectSourceId = null;
+    if (mode != AppMode.marquee) _selectedPersonIds.clear();
     notifyListeners();
   }
 
@@ -226,6 +347,7 @@ class GenogramProvider extends ChangeNotifier {
   void runAutoLayout() {
     final ps = _state.persons.values.toList();
     if (ps.isEmpty) return;
+    _pushUndo();
 
     // Group by generation
     final Map<int, List<Person>> genMap = {};
@@ -262,6 +384,7 @@ class GenogramProvider extends ChangeNotifier {
   String exportJson() => jsonEncode(_state.toJson());
 
   void importJson(String json) {
+    _pushUndo();
     final data = jsonDecode(json) as Map<String, dynamic>;
     _state = GenogramState.fromJson(data);
     _selectedPersonId = null;
@@ -272,6 +395,7 @@ class GenogramProvider extends ChangeNotifier {
   }
 
   void clearAll() {
+    _pushUndo();
     _state = GenogramState.empty();
     _selectedPersonId = null;
     _selectedRelationshipId = null;
