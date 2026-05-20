@@ -91,22 +91,56 @@ class GenogramProvider extends ChangeNotifier {
   // ----------------------------------------------------------------
   // Person CRUD
   // ----------------------------------------------------------------
-  String addPerson(Gender gender) {
+  String addPerson(Gender gender, {Size? viewportSize}) {
     if (!_state.canAddPerson) return '';
     _pushUndo();
     final id = _nextPersonId();
+    final position = _nextSpawnPosition(viewportSize);
     final person = Person(
       id: id,
       gender: gender,
-      position: Offset(
-        (persons.length % 5) * 120.0,
-        (persons.length ~/ 5) * 140.0,
-      ),
+      position: position,
     );
     final updated = Map<String, Person>.from(_state.persons)..[id] = person;
     _state = _state.copyWith(persons: updated);
     notifyListeners();
     return id;
+  }
+
+  /// Pick a world-space spawn position that lands inside the current viewport
+  /// (if [viewportSize] is provided). Uses a small grid offset from the
+  /// viewport's top-left so multiple adds don't stack exactly.
+  Offset _nextSpawnPosition(Size? viewportSize) {
+    const nodeSize = 52.0;
+    const margin = 24.0;
+    final i = persons.length;
+    final col = i % 5;
+    final row = i ~/ 5;
+    final localOffset = Offset(col * 120.0, row * 140.0);
+
+    if (viewportSize == null) {
+      return localOffset;
+    }
+    // Convert viewport top-left (screen 0,0) to world coords, then place
+    // the spawn grid inside the visible region.
+    final worldTopLeft = (-_viewOffset) / _viewScale;
+    final worldVisibleW = viewportSize.width / _viewScale;
+    final worldVisibleH = viewportSize.height / _viewScale;
+    final baseX = worldTopLeft.dx + margin;
+    final baseY = worldTopLeft.dy + margin;
+    // Keep within visible bounds; wrap if needed.
+    final maxCols =
+        ((worldVisibleW - margin * 2) / 120.0).floor().clamp(1, 999);
+    final wrappedCol = col % maxCols;
+    final wrappedRow = row + (col ~/ maxCols);
+    var x = baseX + wrappedCol * 120.0;
+    var y = baseY + wrappedRow * 140.0;
+    // Clamp so the node stays on screen.
+    final maxX = worldTopLeft.dx + worldVisibleW - nodeSize - margin;
+    final maxY = worldTopLeft.dy + worldVisibleH - nodeSize - margin;
+    if (x > maxX) x = maxX;
+    if (y > maxY) y = maxY;
+    return Offset(x, y);
   }
 
   void updatePerson(Person person) {
@@ -122,6 +156,23 @@ class GenogramProvider extends ChangeNotifier {
     _pushUndo(coalesceKey: 'movePerson:$id');
     final updated = Map<String, Person>.from(_state.persons)
       ..[id] = person.copyWith(position: person.position + delta);
+    _state = _state.copyWith(persons: updated);
+    notifyListeners();
+  }
+
+  /// Set absolute positions for many persons in a single mutation. Used while
+  /// dragging a multi-selection so all selected nodes translate together
+  /// without piling up undo entries or notifyListeners storms.
+  void setPersonPositions(Map<String, Offset> positions,
+      {String? coalesceKey}) {
+    if (positions.isEmpty) return;
+    _pushUndo(coalesceKey: coalesceKey ?? 'setPersonPositions');
+    final updated = Map<String, Person>.from(_state.persons);
+    for (final entry in positions.entries) {
+      final p = updated[entry.key];
+      if (p == null) continue;
+      updated[entry.key] = p.copyWith(position: entry.value);
+    }
     _state = _state.copyWith(persons: updated);
     notifyListeners();
   }
@@ -314,6 +365,31 @@ class GenogramProvider extends ChangeNotifier {
   void updateView({Offset? offset, double? scale}) {
     if (offset != null) _viewOffset = offset;
     if (scale != null) _viewScale = scale.clamp(0.1, 4.0);
+    notifyListeners();
+  }
+
+  /// Zoom by [factor] keeping the world point under [focal] (in screen coords)
+  /// stationary. If [focal] is null, zooms about the current viewport center
+  /// using [canvasSize].
+  void zoomBy(double factor, {Offset? focal, Size? canvasSize}) {
+    final newScale = (_viewScale * factor).clamp(0.1, 4.0);
+    if (newScale == _viewScale) return;
+    final f = focal ??
+        (canvasSize != null
+            ? Offset(canvasSize.width / 2, canvasSize.height / 2)
+            : Offset.zero);
+    final ratio = newScale / _viewScale;
+    _viewOffset = Offset(
+      f.dx - (f.dx - _viewOffset.dx) * ratio,
+      f.dy - (f.dy - _viewOffset.dy) * ratio,
+    );
+    _viewScale = newScale;
+    notifyListeners();
+  }
+
+  void resetZoom() {
+    _viewScale = 1.0;
+    _viewOffset = Offset.zero;
     notifyListeners();
   }
 

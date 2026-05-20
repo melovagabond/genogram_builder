@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:provider/provider.dart';
 import '../providers/genogram_provider.dart';
 import '../painters/node_painter.dart';
@@ -24,6 +25,9 @@ class _GenogramCanvasState extends State<GenogramCanvas> {
   String? _draggingNodeId;
   Offset _dragNodeStart = Offset.zero;
   Offset _dragTouchStart = Offset.zero;
+  // Multi-drag: snapshot of starting positions for each selected node so
+  // we can apply a single absolute delta on every move.
+  Map<String, Offset> _multiDragStart = const <String, Offset>{};
 
   // Pinch state
   double _pinchStartScale = 1.0;
@@ -44,26 +48,37 @@ class _GenogramCanvasState extends State<GenogramCanvas> {
       builder: (context, constraints) {
         final size = Size(constraints.maxWidth, constraints.maxHeight);
 
-        return GestureDetector(
-          onTapUp: (d) => _onTapUp(d.localPosition, provider, context),
-          onDoubleTapDown: (d) => _onDoubleTap(d.localPosition, provider, context),
-          onScaleStart: (d) => _onScaleStart(d, provider),
-          onScaleUpdate: (d) => _onScaleUpdate(d, provider),
-          onScaleEnd: (_) => _onScaleEnd(provider),
-          onLongPressStart: (d) => _onLongPress(d.localPosition, provider, context),
-          child: MouseRegion(
-            cursor: provider.mode == AppMode.connect
-                ? SystemMouseCursors.precise
-                : provider.mode == AppMode.marquee
-                    ? SystemMouseCursors.cell
-                    : SystemMouseCursors.grab,
-            child: CustomPaint(
-              size: size,
-              painter: _GenogramPainter(
-                provider: provider,
-                marqueeRect: _currentMarqueeRect(),
+        return Listener(
+          onPointerSignal: (event) {
+            if (event is PointerScrollEvent) {
+              // Trackpad/mouse wheel zoom. Ctrl/Cmd not required.
+              final dy = event.scrollDelta.dy;
+              if (dy == 0) return;
+              final factor = dy < 0 ? 1.1 : 1 / 1.1;
+              provider.zoomBy(factor, focal: event.localPosition);
+            }
+          },
+          child: GestureDetector(
+            onTapUp: (d) => _onTapUp(d.localPosition, provider, context),
+            onDoubleTapDown: (d) => _onDoubleTap(d.localPosition, provider, context),
+            onScaleStart: (d) => _onScaleStart(d, provider),
+            onScaleUpdate: (d) => _onScaleUpdate(d, provider),
+            onScaleEnd: (_) => _onScaleEnd(provider),
+            onLongPressStart: (d) => _onLongPress(d.localPosition, provider, context),
+            child: MouseRegion(
+              cursor: provider.mode == AppMode.connect
+                  ? SystemMouseCursors.precise
+                  : provider.mode == AppMode.marquee
+                      ? SystemMouseCursors.cell
+                      : SystemMouseCursors.grab,
+              child: CustomPaint(
+                size: size,
+                painter: _GenogramPainter(
+                  provider: provider,
+                  marqueeRect: _currentMarqueeRect(),
+                ),
+                child: const SizedBox.expand(),
               ),
-              child: const SizedBox.expand(),
             ),
           ),
         );
@@ -159,6 +174,17 @@ class _GenogramCanvasState extends State<GenogramCanvas> {
       _draggingNodeId = nodeId;
       _dragNodeStart = provider.persons[nodeId]!.position;
       _dragTouchStart = d.localFocalPoint;
+      // If the dragged node is part of a multi-selection, snapshot all
+      // selected positions so we can move them together.
+      if (provider.selectedPersonIds.contains(nodeId) &&
+          provider.selectedPersonIds.length > 1) {
+        _multiDragStart = {
+          for (final id in provider.selectedPersonIds)
+            if (provider.persons[id] != null) id: provider.persons[id]!.position,
+        };
+      } else {
+        _multiDragStart = const <String, Offset>{};
+      }
     } else {
       _isNodeDrag = false;
       _draggingNodeId = null;
@@ -181,9 +207,18 @@ class _GenogramCanvasState extends State<GenogramCanvas> {
 
     if (_isNodeDrag && _draggingNodeId != null && d.pointerCount == 1) {
       final delta = (d.localFocalPoint - _dragTouchStart) / provider.viewScale;
-      final newPos = _dragNodeStart + delta;
-      final person = provider.persons[_draggingNodeId!]!;
-      provider.updatePerson(person.copyWith(position: newPos));
+      if (_multiDragStart.isNotEmpty) {
+        final positions = <String, Offset>{
+          for (final entry in _multiDragStart.entries)
+            entry.key: entry.value + delta,
+        };
+        provider.setPersonPositions(positions,
+            coalesceKey: 'multiDrag:${_draggingNodeId!}');
+      } else {
+        final newPos = _dragNodeStart + delta;
+        final person = provider.persons[_draggingNodeId!]!;
+        provider.updatePerson(person.copyWith(position: newPos));
+      }
       return;
     }
 
@@ -224,6 +259,7 @@ class _GenogramCanvasState extends State<GenogramCanvas> {
     _marqueeEnd = null;
     _draggingNodeId = null;
     _isNodeDrag = false;
+    _multiDragStart = const <String, Offset>{};
     setState(() {});
   }
 

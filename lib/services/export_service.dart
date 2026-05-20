@@ -95,9 +95,9 @@ class ExportService {
       ),
     );
 
-    await Printing.layoutPdf(
-      onLayout: (_) async => doc.save(),
-      name: 'genogram_${DateTime.now().millisecondsSinceEpoch}.pdf',
+    await Printing.sharePdf(
+      bytes: await doc.save(),
+      filename: 'genogram_${DateTime.now().millisecondsSinceEpoch}.pdf',
     );
   }
 

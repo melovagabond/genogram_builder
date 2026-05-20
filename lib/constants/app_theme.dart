@@ -40,7 +40,7 @@ const Map<RelationshipType, Color> kRelationshipColors = {
   RelationshipType.divorced:        Color(0xFFE8ECF0),
   RelationshipType.engaged:         Color(0xFFE8ECF0),
   RelationshipType.parentChild:     Color(0xFF8892A4),
-  RelationshipType.sibling:         Color(0xFF8892A4),
+  RelationshipType.sibling:         Color.fromARGB(255, 205, 220, 71),
   // Neutral
   RelationshipType.plain:           Color(0xFF8892A4),
   RelationshipType.indifferent:     Color(0xFF8892A4),

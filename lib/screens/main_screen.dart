@@ -10,6 +10,14 @@ import '../services/import_service.dart';
 import '../constants/app_theme.dart';
 import '../widgets/canvas_widget.dart';
 
+/// Returns the canvas area size (full screen minus app bar + status bar).
+/// Used so newly-added nodes spawn inside the currently visible viewport.
+Size _canvasSize(BuildContext context) {
+  final s = MediaQuery.of(context).size;
+  // App bar ~52, status bar ~36
+  return Size(s.width, (s.height - 88).clamp(100, double.infinity));
+}
+
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -92,6 +100,10 @@ class _MainScreenState extends State<MainScreen> {
                 child: _MultiSelectActionBar(provider: provider),
               ),
             ),
+          Positioned(
+            right: 12, bottom: 96,
+            child: _ZoomControls(provider: provider),
+          ),
         ],
       ),
       floatingActionButton: _QuickAddFab(provider: provider),
@@ -123,9 +135,9 @@ class _AppBar extends StatelessWidget {
       titleSpacing: 12,
       title: const Text('GENOGRAM'),
       actions: [
-        _tbBtn(context, '+ Male', () => provider.addPerson(Gender.male)),
-        _tbBtn(context, '+ Female', () => provider.addPerson(Gender.female)),
-        _tbBtn(context, '+ ?', () => provider.addPerson(Gender.unknown)),
+        _tbBtn(context, '+ Male', () => provider.addPerson(Gender.male, viewportSize: _canvasSize(context))),
+        _tbBtn(context, '+ Female', () => provider.addPerson(Gender.female, viewportSize: _canvasSize(context))),
+        _tbBtn(context, '+ ?', () => provider.addPerson(Gender.unknown, viewportSize: _canvasSize(context))),
         _divider(),
         _tbBtn(
           context,
@@ -597,11 +609,11 @@ class _QuickAddFabState extends State<_QuickAddFab>
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                _mini('Male', kMaleColor, () { _toggle(); widget.provider.addPerson(Gender.male); }),
+                _mini('Male', kMaleColor, () { _toggle(); widget.provider.addPerson(Gender.male, viewportSize: _canvasSize(context)); }),
                 const SizedBox(height: 8),
-                _mini('Female', kFemaleColor, () { _toggle(); widget.provider.addPerson(Gender.female); }),
+                _mini('Female', kFemaleColor, () { _toggle(); widget.provider.addPerson(Gender.female, viewportSize: _canvasSize(context)); }),
                 const SizedBox(height: 8),
-                _mini('Unknown', kUnknownColor, () { _toggle(); widget.provider.addPerson(Gender.unknown); }),
+                _mini('Unknown', kUnknownColor, () { _toggle(); widget.provider.addPerson(Gender.unknown, viewportSize: _canvasSize(context)); }),
                 const SizedBox(height: 8),
               ],
             ),
@@ -722,6 +734,59 @@ class _LegendDialog extends StatelessWidget {
           ]),
         )),
       ],
+    );
+  }
+}
+
+// ----------------------------------------------------------------
+// Zoom controls (floating, right side)
+// ----------------------------------------------------------------
+class _ZoomControls extends StatelessWidget {
+  final GenogramProvider provider;
+  const _ZoomControls({required this.provider});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: kSurface,
+        border: Border.all(color: kBorder),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _btn(Icons.add, 'Zoom in', () {
+            provider.zoomBy(1.2, canvasSize: _canvasSize(context));
+          }),
+          Container(height: 1, width: 32, color: kBorder),
+          _btn(Icons.crop_free, 'Reset zoom', () {
+            provider.resetZoom();
+          }, label: '${(provider.viewScale * 100).round()}%'),
+          Container(height: 1, width: 32, color: kBorder),
+          _btn(Icons.remove, 'Zoom out', () {
+            provider.zoomBy(1 / 1.2, canvasSize: _canvasSize(context));
+          }),
+        ],
+      ),
+    );
+  }
+
+  Widget _btn(IconData icon, String tooltip, VoidCallback onTap, {String? label}) {
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        onTap: onTap,
+        child: SizedBox(
+          width: 36, height: 32,
+          child: Center(
+            child: label != null
+                ? Text(label, style: const TextStyle(
+                    color: kText2, fontSize: 10, fontFamily: 'monospace'))
+                : Icon(icon, size: 16, color: kText2),
+          ),
+        ),
+      ),
     );
   }
 }
