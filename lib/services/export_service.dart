@@ -44,7 +44,7 @@ class ExportService {
         contentW > contentH ? PdfPageFormat.a4.landscape : PdfPageFormat.a4;
 
     final availW = pageFormat.availableWidth - padding * 2;
-    final availH = pageFormat.availableHeight - padding * 2 - 60;
+    final availH = pageFormat.availableHeight - padding * 2 - 80;
     final sx = availW / contentW;
     final sy = availH / contentH;
     final scale = (sx < sy ? sx : sy).clamp(0.05, 1.5);
@@ -74,11 +74,18 @@ class ExportService {
             ),
             pw.SizedBox(height: 8),
             pw.Expanded(
-              child: pw.CustomPaint(
-                painter: (pdfCanvas, pdfSize) {
-                  _paintAll(
-                      pdfCanvas, pdfSize, provider, minX, minY, scale, padding);
-                },
+              child: pw.Stack(
+                children: [
+                  // Shapes and lines via CustomPaint (no text)
+                  pw.CustomPaint(
+                    painter: (pdfCanvas, pdfSize) {
+                      _paintShapes(
+                          pdfCanvas, pdfSize, provider, minX, minY, scale, padding);
+                    },
+                  ),
+                  // Labels as pw widgets (correct font handling)
+                  ..._buildLabels(provider, minX, minY, scale, padding),
+                ],
               ),
             ),
             pw.SizedBox(height: 8),
@@ -94,7 +101,10 @@ class ExportService {
     );
   }
 
-  static void _paintAll(
+  // ----------------------------------------------------------------
+  // Paint only shapes and lines -- no text in the low-level painter
+  // ----------------------------------------------------------------
+  static void _paintShapes(
     PdfGraphics canvas,
     PdfPoint size,
     GenogramProvider provider,
@@ -117,16 +127,74 @@ class ExportService {
       _drawRel(canvas, rel, src, tgt);
     }
     for (final person in provider.persons.values) {
-      _drawPerson(canvas, person);
+      _drawPersonShape(canvas, person);
     }
 
     canvas.restoreContext();
   }
 
   // ----------------------------------------------------------------
-  // Person
+  // Labels as pw.Positioned widgets -- correct font path
   // ----------------------------------------------------------------
-  static void _drawPerson(PdfGraphics c, Person person) {
+  static List<pw.Widget> _buildLabels(
+    GenogramProvider provider,
+    double minX,
+    double minY,
+    double scale,
+    double padding,
+  ) {
+    final widgets = <pw.Widget>[];
+    const ns = kNodeSize;
+    const half = ns / 2;
+
+    for (final person in provider.persons.values) {
+      if (person.name.isEmpty && person.yearLabel.isEmpty) continue;
+
+      // Convert world position to PDF page position (Y not flipped for pw widgets)
+      final px = (person.position.dx - minX) * scale + padding;
+      final py = (person.position.dy - minY) * scale + padding;
+
+      if (person.name.isNotEmpty) {
+        widgets.add(
+          pw.Positioned(
+            left: px,
+            top: py + ns * scale + 2,
+            child: pw.Text(
+              person.name,
+              style: pw.TextStyle(
+                fontSize: 7 * scale.clamp(0.5, 1.0),
+                fontWeight: pw.FontWeight.bold,
+                color: PdfColors.blueGrey900,
+              ),
+            ),
+          ),
+        );
+      }
+      if (person.yearLabel.isNotEmpty) {
+        widgets.add(
+          pw.Positioned(
+            left: px,
+            top: py + ns * scale + 11,
+            child: pw.Text(
+              person.yearLabel,
+              style: pw.TextStyle(
+                fontSize: 6 * scale.clamp(0.5, 1.0),
+                fontStyle: pw.FontStyle.italic,
+                color: PdfColors.grey600,
+              ),
+            ),
+          ),
+        );
+      }
+    }
+
+    return widgets;
+  }
+
+  // ----------------------------------------------------------------
+  // Person shape only (no text)
+  // ----------------------------------------------------------------
+  static void _drawPersonShape(PdfGraphics c, Person person) {
     const s = kNodeSize;
     const h = s / 2;
     final cx = person.position.dx + h;
@@ -167,24 +235,6 @@ class ExportService {
       c.moveTo(cx + h - 6, cy - h + 6);
       c.lineTo(cx - h + 6, cy + h - 6);
       c.strokePath();
-    }
-
-    // Un-flip Y for text rendering
-    if (person.name.isNotEmpty || person.yearLabel.isNotEmpty) {
-      c.saveContext();
-      final tm = Matrix4.identity()
-        ..translate(cx - h, cy - h)
-        ..scale(1.0, -1.0, 1.0);
-      c.setTransform(tm);
-      if (person.name.isNotEmpty) {
-        c.setFillColor(PdfColors.blueGrey900);
-        c.drawString(pw.Font.helveticaBold(), 7, person.name, 0, -2);
-      }
-      if (person.yearLabel.isNotEmpty) {
-        c.setFillColor(PdfColors.grey600);
-        c.drawString(pw.Font.helveticaOblique(), 6, person.yearLabel, 0, -11);
-      }
-      c.restoreContext();
     }
   }
 
@@ -240,7 +290,6 @@ class ExportService {
       case RelationshipType.distant:
         c.setLineWidth(0.6);
         c.moveTo(x1, y1); c.lineTo(x2, y2); c.strokePath();
-      // Structural lines -- plain single line
       case RelationshipType.partnership ||
            RelationshipType.parentChild ||
            RelationshipType.sibling:

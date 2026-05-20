@@ -127,7 +127,7 @@ class _AppBar extends StatelessWidget {
           ),
           icon: const Icon(Icons.more_vert, color: kText2, size: 20),
           onSelected: (val) => _handleMenu(context, val, provider),
-          itemBuilder: (_) => [
+          itemBuilder: (_) => <PopupMenuEntry<String>>[
             _menuItem('export_json', 'Export JSON'),
             _menuItem('import_json', 'Import JSON'),
             _menuItem('export_pdf', 'Export PDF'),

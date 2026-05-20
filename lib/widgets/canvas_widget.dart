@@ -47,7 +47,7 @@ class _GenogramCanvasState extends State<GenogramCanvas> {
           onLongPressStart: (d) => _onLongPress(d.localPosition, provider, context),
           child: MouseRegion(
             cursor: provider.mode == AppMode.connect
-                ? SystemMouseCursors.crosshair
+                ? SystemMouseCursors.precise
                 : SystemMouseCursors.grab,
             child: CustomPaint(
               size: size,
@@ -252,7 +252,7 @@ class _GenogramCanvasState extends State<GenogramCanvas> {
       BuildContext context, Offset pos, String nodeId, GenogramProvider provider) {
     final person = provider.persons[nodeId];
     if (person == null) return;
-    showMenu(
+    showMenu<void>(
       context: context,
       position: RelativeRect.fromLTRB(pos.dx, pos.dy, pos.dx + 1, pos.dy + 1),
       color: kSurface,
@@ -261,12 +261,12 @@ class _GenogramCanvasState extends State<GenogramCanvas> {
         side: const BorderSide(color: kBorder),
       ),
       items: [
-        PopupMenuItem(
+        PopupMenuItem<void>(
           child: const Text('Edit', style: TextStyle(color: kText, fontSize: 13)),
           onTap: () => Future.microtask(
               () => _showNodeEditPanel(context, nodeId, provider)),
         ),
-        PopupMenuItem(
+        PopupMenuItem<void>(
           child: const Text('Connect from here',
               style: TextStyle(color: kText, fontSize: 13)),
           onTap: () {
@@ -276,8 +276,8 @@ class _GenogramCanvasState extends State<GenogramCanvas> {
             });
           },
         ),
-        const PopupMenuDivider(),
-        PopupMenuItem(
+        const PopupMenuDivider() as PopupMenuEntry<void>,
+        PopupMenuItem<void>(
           child: const Text('Delete',
               style: TextStyle(color: kAccentRed, fontSize: 13)),
           onTap: () => provider.deletePerson(nodeId),
