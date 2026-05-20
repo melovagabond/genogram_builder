@@ -7,7 +7,7 @@ Targets Android tablet primarily, with iOS, web, and desktop support planned.
 
 - Full Bowen standard node symbols: male (square), female (circle), unknown (diamond)
 - Deceased overlay, pregnancy, miscarriage, abortion, stillbirth, identical/fraternal twins
-- Per-person markers: substance abuse, mental illness, physical illness, abuse perpetrator/victim, adopted, foster, index person
+- Per-person markers: substance abuse, mental illness, physical illness, abuse perpetrator/victim, adopted, foster, **index person** (focal — renders gold)
 - 15 relationship line types across structural and emotional categories
 - Auto-layout by generation (set generation field per person: 0=focal, -1=parent, 1=child, etc.)
 - Pan, pinch-zoom, drag nodes -- touch optimized
@@ -177,6 +177,186 @@ lib/
 - **Export JSON**: shares the genogram as a `.json` file (use as backup)
 - **Import JSON**: opens file picker, loads a previously exported `.json`
 - **Export PDF**: opens the print/share dialog with a rendered PDF
+
+## Bulk authoring via JSON
+
+The fastest way to seed a large family is to hand-write a JSON file, import it,
+then drag the nodes into place (or hit **Layout** + **Fit**). Use the schema
+below.
+
+### Top-level
+
+```jsonc
+{
+  "version": 1,
+  "nextId": 100,                // any int larger than your largest used id
+  "persons": { "p1": { ... }, "p2": { ... } },
+  "relationships": { "r1": { ... }, "r2": { ... } }
+}
+```
+
+`persons` and `relationships` are objects keyed by id. The key MUST match the
+`id` field inside the object.
+
+### Person object
+
+```jsonc
+{
+  "id": "p1",
+  "name": "Alice Smith",
+  "gender": "female",           // "male" | "female" | "unknown"
+  "birthYear": 1980,            // int or null
+  "deathYear": null,            // int or null
+  "generation": 0,              // 0 = focal, -1 = parents, 1 = children, ...
+  "specialType": "none",        // "none" | "pregnancy" | "miscarriage"
+                                // | "abortion" | "stillbirth"
+                                // | "twinMono" | "twinDi"
+  "markers": {
+    "substance": false,
+    "mental": false,
+    "physical": false,
+    "abusePerpetrator": false,
+    "abuseVictim": false,
+    "adopted": false,
+    "foster": false,
+    "indexPerson": false        // <-- the "main focus" (you). Renders GOLD.
+  },
+  "notes": "",
+  "x": 0,                       // world coordinates (px). 0,0 is fine; use
+  "y": 0                        // Layout/Fit later, or drag to organize.
+}
+```
+
+#### The index person (main focus)
+
+Set `markers.indexPerson: true` on the person who is the focal point of the
+chart (typically the client / "you"). That node:
+
+- Renders in **gold** (`#FFC83D`) instead of the gender color
+- Has a thicker outline
+- Shows an `IP` marker letter below the shape
+- Should appear on **exactly one** person
+
+The gender shape (square / circle / diamond) is still preserved.
+
+### Relationship object
+
+```jsonc
+{
+  "id": "r1",
+  "sourceId": "p1",
+  "targetId": "p2",
+  "type": "married",            // see full list below
+  "notes": ""
+}
+```
+
+#### Structural relationship types
+
+| `type` value     | Meaning                                    |
+|------------------|--------------------------------------------|
+| `married`        | Marriage (solid horizontal line)           |
+| `partnership`    | Partnership / Cohabitation                 |
+| `engaged`        | Engaged                                    |
+| `separated`      | Separated                                  |
+| `divorced`       | Divorced                                   |
+| `parentChild`    | Parent (source) -> Child (target)          |
+| `sibling`        | Siblings (no shared-parent requirement)    |
+
+#### Emotional / clinical types
+
+`plain`, `indifferent`, `distant`, `cutoff`, `harmony`, `friendship`, `love`,
+`inLove`, `fused`, `distrust`, `hostile`, `distantHostile`, `closeHostile`,
+`fusedHostile`, `discord`, `violence`, `distantViolence`, `closeViolence`,
+`fusedViolence`, `abuse`, `physicalAbuse`, `emotionalAbuse`, `sexualAbuse`,
+`neglect`, `manipulative`, `controlling`, `jealous`, `focusedOn`, `fanAdmirer`,
+`limerence`, `neverMet`, `other`.
+
+### Patterns to build a family
+
+**Marriage / partnership** — one relationship between the two partners:
+
+```json
+{ "id": "r1", "sourceId": "dad", "targetId": "mom", "type": "married", "notes": "" }
+```
+
+**Parent -> child** — one relationship per parent-child link. If both parents
+are present and married/partnered, the painter automatically routes the child
+line down from the midpoint of the couple, so you only need to author the
+parent-child links themselves:
+
+```json
+{ "id": "r2", "sourceId": "dad", "targetId": "kid1", "type": "parentChild", "notes": "" },
+{ "id": "r3", "sourceId": "mom", "targetId": "kid1", "type": "parentChild", "notes": "" }
+```
+
+**Siblings** — author an explicit `sibling` link between each pair, OR rely on
+shared parents (the painter draws a sibling bar across children of the same
+couple automatically). For half-siblings or sibling groups without shared
+parents in the file, use explicit `sibling` links. When three or more siblings
+share an `sibling` graph, they get a single shared sibling bar rather than a
+mess of crossing lines.
+
+**Twins** — set both children's `specialType` to `twinMono` (identical) or
+`twinDi` (fraternal), and link both to the same parent(s) with `parentChild`.
+
+### Minimal worked example
+
+A nuclear family of four with the daughter as the index person:
+
+```json
+{
+  "version": 1,
+  "nextId": 10,
+  "persons": {
+    "dad":  { "id": "dad",  "name": "John",   "gender": "male",
+              "birthYear": 1975, "deathYear": null, "generation": -1,
+              "specialType": "none", "notes": "", "x": 0,   "y": 0,
+              "markers": { "substance": false, "mental": false, "physical": false,
+                           "abusePerpetrator": false, "abuseVictim": false,
+                           "adopted": false, "foster": false, "indexPerson": false } },
+    "mom":  { "id": "mom",  "name": "Jane",   "gender": "female",
+              "birthYear": 1977, "deathYear": null, "generation": -1,
+              "specialType": "none", "notes": "", "x": 120, "y": 0,
+              "markers": { "substance": false, "mental": false, "physical": false,
+                           "abusePerpetrator": false, "abuseVictim": false,
+                           "adopted": false, "foster": false, "indexPerson": false } },
+    "you":  { "id": "you",  "name": "Alex",   "gender": "female",
+              "birthYear": 2005, "deathYear": null, "generation": 0,
+              "specialType": "none", "notes": "", "x": 30,  "y": 160,
+              "markers": { "substance": false, "mental": false, "physical": false,
+                           "abusePerpetrator": false, "abuseVictim": false,
+                           "adopted": false, "foster": false, "indexPerson": true } },
+    "sib":  { "id": "sib",  "name": "Sam",    "gender": "male",
+              "birthYear": 2008, "deathYear": null, "generation": 0,
+              "specialType": "none", "notes": "", "x": 150, "y": 160,
+              "markers": { "substance": false, "mental": false, "physical": false,
+                           "abusePerpetrator": false, "abuseVictim": false,
+                           "adopted": false, "foster": false, "indexPerson": false } }
+  },
+  "relationships": {
+    "r1": { "id": "r1", "sourceId": "dad", "targetId": "mom", "type": "married",     "notes": "" },
+    "r2": { "id": "r2", "sourceId": "dad", "targetId": "you", "type": "parentChild", "notes": "" },
+    "r3": { "id": "r3", "sourceId": "mom", "targetId": "you", "type": "parentChild", "notes": "" },
+    "r4": { "id": "r4", "sourceId": "dad", "targetId": "sib", "type": "parentChild", "notes": "" },
+    "r5": { "id": "r5", "sourceId": "mom", "targetId": "sib", "type": "parentChild", "notes": "" }
+  }
+}
+```
+
+Save it as `family.json`, hit **Import JSON** in the menu, then **Layout** →
+**Fit**. The daughter renders gold as the index person; the couple share a
+single descent line into the sibling bar.
+
+### Tips
+
+- Every person id used in a relationship MUST exist in `persons`.
+- Coordinates (`x`, `y`) can all be `0` — just hit **Layout** + **Fit** after
+  import, or drag-organize by hand.
+- Set `nextId` higher than any numeric id you used so the in-app auto-id
+  generator doesn't collide.
+- Use the **Select** marquee tool to grab multiple imported nodes and drag
+  them as a group.
 
 ## Configuration
 

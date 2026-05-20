@@ -289,6 +289,7 @@ class NodePainter {
   // Helpers
   // ----------------------------------------------------------------
   static Color _colorFor(Person person) {
+    if (person.markers.indexPerson) return kIndexColor;
     return switch (person.gender) {
       Gender.male    => kMaleColor,
       Gender.female  => kFemaleColor,

@@ -20,6 +20,7 @@ const Color kText3        = Color(0xFF4A5568);
 const Color kMaleColor    = Color(0xFF4F9EFF);
 const Color kFemaleColor  = Color(0xFFFF6B9D);
 const Color kUnknownColor = Color(0xFFA0AEC0);
+const Color kIndexColor   = Color(0xFFFFC83D); // gold -- highlights the index person
 
 // ----------------------------------------------------------------
 // Node sizing
