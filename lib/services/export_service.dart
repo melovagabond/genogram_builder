@@ -250,24 +250,36 @@ class ExportService {
     final y2 = tgt.position.dy + h;
 
     final color = switch (rel.type) {
-      RelationshipType.close ||
-      RelationshipType.veryClose       => PdfColors.blue400,
-      RelationshipType.enmeshed        => PdfColors.orange400,
-      RelationshipType.conflicted      => PdfColors.red400,
-      RelationshipType.estranged       => PdfColors.red400,
-      RelationshipType.abusive         => PdfColors.red800,
-      RelationshipType.distant         => PdfColors.blueGrey300,
-      RelationshipType.fusedConflicted => PdfColors.orange500,
-      _                                => PdfColors.blueGrey600,
+      RelationshipType.harmony ||
+      RelationshipType.friendship ||
+      RelationshipType.love ||
+      RelationshipType.inLove ||
+      RelationshipType.fused          => PdfColors.green400,
+      RelationshipType.hostile ||
+      RelationshipType.closeHostile ||
+      RelationshipType.fusedHostile   => PdfColors.red400,
+      RelationshipType.violence ||
+      RelationshipType.closeViolence ||
+      RelationshipType.fusedViolence  => PdfColors.red700,
+      RelationshipType.abuse ||
+      RelationshipType.physicalAbuse  => PdfColors.red900,
+      RelationshipType.emotionalAbuse => PdfColors.purple400,
+      RelationshipType.sexualAbuse ||
+      RelationshipType.neglect        => PdfColors.blue400,
+      RelationshipType.manipulative ||
+      RelationshipType.controlling    => PdfColors.orange500,
+      RelationshipType.discord        => PdfColors.orange300,
+      RelationshipType.distant        => PdfColors.blueGrey300,
+      _                               => PdfColors.blueGrey600,
     };
 
     c.setStrokeColor(color);
     c.setLineWidth(1.0);
 
     switch (rel.type) {
-      case RelationshipType.married || RelationshipType.close:
+      case RelationshipType.married:
         _parallel(c, x1, y1, x2, y2, 2.5, color);
-      case RelationshipType.veryClose || RelationshipType.enmeshed:
+      case RelationshipType.fused || RelationshipType.friendship:
         _triple(c, x1, y1, x2, y2, color);
       case RelationshipType.separated:
         _dashed(c, x1, y1, x2, y2, color, 6, 3);
@@ -280,11 +292,11 @@ class ExportService {
         c.setLineWidth(1.5);
         c.moveTo(mx - 5, my - 7); c.lineTo(mx - 2, my + 7); c.strokePath();
         c.moveTo(mx + 2, my - 7); c.lineTo(mx + 5, my + 7); c.strokePath();
-      case RelationshipType.conflicted || RelationshipType.abusive:
+      case RelationshipType.hostile || RelationshipType.abuse || RelationshipType.violence:
         _zigzag(c, x1, y1, x2, y2, color);
-      case RelationshipType.estranged:
+      case RelationshipType.cutoff:
         _cutoff(c, x1, y1, x2, y2, color);
-      case RelationshipType.fusedConflicted:
+      case RelationshipType.fusedHostile:
         _triple(c, x1, y1, x2, y2, color);
         _zigzag(c, x1, y1, x2, y2, PdfColors.red400);
       case RelationshipType.distant:
@@ -292,7 +304,11 @@ class ExportService {
         c.moveTo(x1, y1); c.lineTo(x2, y2); c.strokePath();
       case RelationshipType.partnership ||
            RelationshipType.parentChild ||
-           RelationshipType.sibling:
+           RelationshipType.sibling ||
+           RelationshipType.plain ||
+           RelationshipType.indifferent:
+        c.moveTo(x1, y1); c.lineTo(x2, y2); c.strokePath();
+      default:
         c.moveTo(x1, y1); c.lineTo(x2, y2); c.strokePath();
     }
   }

@@ -30,9 +30,10 @@ const double kGenHeight  = 150.0;
 const double kHSpacing   = 100.0;
 
 // ----------------------------------------------------------------
-// Relationship line colors
+// Relationship line colors -- matching the reference image palette
 // ----------------------------------------------------------------
 const Map<RelationshipType, Color> kRelationshipColors = {
+  // Structural
   RelationshipType.married:         Color(0xFFE8ECF0),
   RelationshipType.partnership:     Color(0xFFE8ECF0),
   RelationshipType.separated:       Color(0xFFE8ECF0),
@@ -40,14 +41,45 @@ const Map<RelationshipType, Color> kRelationshipColors = {
   RelationshipType.engaged:         Color(0xFFE8ECF0),
   RelationshipType.parentChild:     Color(0xFF8892A4),
   RelationshipType.sibling:         Color(0xFF8892A4),
-  RelationshipType.close:           Color(0xFF4F9EFF),
-  RelationshipType.veryClose:       Color(0xFF4F9EFF),
-  RelationshipType.enmeshed:        Color(0xFFFFAA4F),
+  // Neutral
+  RelationshipType.plain:           Color(0xFF8892A4),
+  RelationshipType.indifferent:     Color(0xFF8892A4),
   RelationshipType.distant:         Color(0xFF4A5568),
-  RelationshipType.conflicted:      Color(0xFFFF6B6B),
-  RelationshipType.estranged:       Color(0xFFFF6B6B),
-  RelationshipType.fusedConflicted: Color(0xFFFF9D4F),
-  RelationshipType.abusive:         Color(0xFFCC2222),
+  RelationshipType.cutoff:          Color(0xFF8892A4),
+  // Positive -- greens matching image
+  RelationshipType.harmony:         Color(0xFF22AA44),
+  RelationshipType.friendship:      Color(0xFF22AA44),
+  RelationshipType.love:            Color(0xFF22AA44),
+  RelationshipType.inLove:          Color(0xFF22AA44),
+  RelationshipType.fused:           Color(0xFF4F9EFF),
+  // Negative
+  RelationshipType.distrust:        Color(0xFFFF6B6B),
+  RelationshipType.hostile:         Color(0xFFFF3333),
+  RelationshipType.discord:         Color(0xFFFF8800),
+  RelationshipType.distantHostile:  Color(0xFFFF4444),
+  RelationshipType.closeHostile:    Color(0xFFFF2222),
+  RelationshipType.fusedHostile:    Color(0xFFFF0000),
+  // Violence -- deeper red
+  RelationshipType.violence:        Color(0xFFCC0000),
+  RelationshipType.distantViolence: Color(0xFFBB1111),
+  RelationshipType.closeViolence:   Color(0xFFAA0000),
+  RelationshipType.fusedViolence:   Color(0xFF990000),
+  // Abuse
+  RelationshipType.abuse:           Color(0xFF881111),
+  RelationshipType.physicalAbuse:   Color(0xFF770000),
+  RelationshipType.emotionalAbuse:  Color(0xFFAA44FF),
+  RelationshipType.sexualAbuse:     Color(0xFF4488FF),
+  RelationshipType.neglect:         Color(0xFF4488FF),
+  // Control
+  RelationshipType.manipulative:    Color(0xFFFF8800),
+  RelationshipType.controlling:     Color(0xFFFF3300),
+  RelationshipType.jealous:         Color(0xFFFFCC00),
+  RelationshipType.focusedOn:       Color(0xFF8892A4),
+  RelationshipType.fanAdmirer:      Color(0xFF8892A4),
+  RelationshipType.limerence:       Color(0xFF8892A4),
+  // Other
+  RelationshipType.neverMet:        Color(0xFF4A5568),
+  RelationshipType.other:           Color(0xFF4A5568),
 };
 
 // ----------------------------------------------------------------

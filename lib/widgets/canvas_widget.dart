@@ -301,8 +301,115 @@ class _GenogramPainter extends CustomPainter {
     canvas.translate(provider.viewOffset.dx, provider.viewOffset.dy);
     canvas.scale(provider.viewScale);
 
-    // Draw relationships first (behind nodes)
+    // Build couple-relationship lookup: unordered pair of person ids -> rel.
+    // Used so children of a couple can originate from the midpoint of the
+    // existing link between their parents.
+    const coupleTypes = <RelationshipType>{
+      RelationshipType.married,
+      RelationshipType.partnership,
+      RelationshipType.engaged,
+      RelationshipType.separated,
+      RelationshipType.divorced,
+    };
+    String pairKey(String a, String b) =>
+        (a.compareTo(b) < 0) ? '$a|$b' : '$b|$a';
+    final couples = <String, Relationship>{};
     for (final rel in provider.relationships.values) {
+      if (coupleTypes.contains(rel.type)) {
+        couples[pairKey(rel.sourceId, rel.targetId)] = rel;
+      }
+    }
+
+    // Group parent-child relationships by the (sorted) set of parents.
+    // Key examples: "p1" for a single parent, "p1|p2" for a couple.
+    final parentChildByParents = <String, List<Relationship>>{};
+    final childParents = <String, List<String>>{};
+    final otherRels = <Relationship>[];
+    for (final rel in provider.relationships.values) {
+      if (rel.type == RelationshipType.parentChild) {
+        childParents
+            .putIfAbsent(rel.targetId, () => [])
+            .add(rel.sourceId);
+      } else {
+        otherRels.add(rel);
+      }
+    }
+    // Build a parent -> couple-partner lookup so a child with just one
+    // explicit parent link can still be routed through the parents' shared
+    // couple link.
+    final partnerOf = <String, String>{};
+    for (final rel in provider.relationships.values) {
+      if (!coupleTypes.contains(rel.type)) continue;
+      // First couple wins if a person has multiple (e.g. remarriage).
+      partnerOf.putIfAbsent(rel.sourceId, () => rel.targetId);
+      partnerOf.putIfAbsent(rel.targetId, () => rel.sourceId);
+    }
+
+    // Assign each parent-child rel to its parent-group.
+    for (final rel in provider.relationships.values) {
+      if (rel.type != RelationshipType.parentChild) continue;
+      final parents = childParents[rel.targetId] ?? const <String>[];
+      String key;
+      if (parents.length >= 2 &&
+          couples.containsKey(pairKey(parents[0], parents[1]))) {
+        // Both parents linked explicitly and they form a couple.
+        final sorted = [parents[0], parents[1]]..sort();
+        key = sorted.join('|');
+      } else if (parents.length == 1 &&
+          partnerOf.containsKey(rel.sourceId)) {
+        // Single explicit parent, but that parent has a couple partner —
+        // treat the child as belonging to the couple.
+        final partner = partnerOf[rel.sourceId]!;
+        final sorted = [rel.sourceId, partner]..sort();
+        key = sorted.join('|');
+      } else {
+        key = rel.sourceId;
+      }
+      parentChildByParents.putIfAbsent(key, () => []).add(rel);
+    }
+
+    // Draw parent-child groups (behind nodes).
+    parentChildByParents.forEach((key, rels) {
+      final parentIds = key.split('|');
+      final parents = <Person>[];
+      for (final pid in parentIds) {
+        final p = provider.persons[pid];
+        if (p != null) parents.add(p);
+      }
+      if (parents.isEmpty) return;
+
+      // Children are unique across the rels in this group.
+      final seen = <String>{};
+      final children = <Person>[];
+      final childRels = <Relationship>[];
+      for (final r in rels) {
+        if (!seen.add(r.targetId)) continue;
+        final c = provider.persons[r.targetId];
+        if (c != null) {
+          children.add(c);
+          childRels.add(r);
+        }
+      }
+      if (children.isEmpty) return;
+
+      final anySelected = childRels.any(
+        (r) => provider.selectedRelationshipId == r.id,
+      );
+
+      // Single parent, single child: keep the simple straight line.
+      if (parents.length == 1 && children.length == 1) {
+        RelationPainter.paintRelationship(
+          canvas, childRels.first, parents.first, children.first,
+          selected: anySelected,
+        );
+        return;
+      }
+
+      _paintFamilyGroup(canvas, parents, children, anySelected);
+    });
+
+    // Draw remaining relationships.
+    for (final rel in otherRels) {
       final src = provider.persons[rel.sourceId];
       final tgt = provider.persons[rel.targetId];
       if (src == null || tgt == null) continue;
@@ -329,6 +436,75 @@ class _GenogramPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_GenogramPainter old) => true;
+
+  // Draw a family group: one or two parents connected to one or more
+  // children via a sibling bar. With two parents, the drop originates from
+  // the midpoint of the line between them (their existing couple link).
+  void _paintFamilyGroup(
+    Canvas canvas,
+    List<Person> parents,
+    List<Person> children,
+    bool selected,
+  ) {
+    final color = kRelationshipColors[RelationshipType.parentChild] ?? kText2;
+
+    // Origin point on the parent side.
+    Offset origin;
+    if (parents.length >= 2) {
+      final c1 = parents[0].position + const Offset(kNodeSize / 2, kNodeSize / 2);
+      final c2 = parents[1].position + const Offset(kNodeSize / 2, kNodeSize / 2);
+      origin = Offset((c1.dx + c2.dx) / 2, (c1.dy + c2.dy) / 2);
+    } else {
+      final p = parents.first;
+      origin = Offset(
+        p.position.dx + kNodeSize / 2,
+        p.position.dy + kNodeSize,
+      );
+    }
+
+    final childTops = children
+        .map((c) => Offset(c.position.dx + kNodeSize / 2, c.position.dy))
+        .toList();
+
+    final topMostChildY = childTops
+        .map((p) => p.dy)
+        .reduce((a, b) => a < b ? a : b);
+    // Sibling bar sits midway between the origin and the topmost child.
+    final barY = (origin.dy + topMostChildY) / 2;
+
+    final xs = <double>[origin.dx, ...childTops.map((p) => p.dx)];
+    final minX = xs.reduce((a, b) => a < b ? a : b);
+    final maxX = xs.reduce((a, b) => a > b ? a : b);
+
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 1.5
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+
+    void drawAll(Paint p) {
+      // Origin down (or up) to bar.
+      canvas.drawLine(origin, Offset(origin.dx, barY), p);
+      // Horizontal sibling bar (only needed if more than one child or origin
+      // isn't directly above the single child).
+      if (children.length > 1 || (origin.dx - childTops.first.dx).abs() > 0.5) {
+        canvas.drawLine(Offset(minX, barY), Offset(maxX, barY), p);
+      }
+      // Drop from bar to each child.
+      for (final top in childTops) {
+        canvas.drawLine(Offset(top.dx, barY), top, p);
+      }
+    }
+
+    if (selected) {
+      final hi = Paint()
+        ..color = kAccentGreen.withOpacity(0.25)
+        ..strokeWidth = 8
+        ..style = PaintingStyle.stroke;
+      drawAll(hi);
+    }
+    drawAll(paint);
+  }
 }
 
 // ----------------------------------------------------------------
