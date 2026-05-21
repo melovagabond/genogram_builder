@@ -398,6 +398,43 @@ class _GenogramPainter extends CustomPainter {
     canvas.translate(provider.viewOffset.dx, provider.viewOffset.dy);
     canvas.scale(provider.viewScale);
 
+    // Focus mode: when active, persons NOT in the focused subset (and any
+    // relationship that doesn't have both endpoints inside it) render at
+    // reduced alpha so the user can concentrate on a slice of a busy tree.
+    final focusSet = provider.focusedPersonIds;
+    final focusActive = focusSet.isNotEmpty;
+
+    // Inspect mode: highlights only emotional/clinical relationships touching
+    // a single person; everything else (including structural ties) dims out.
+    final inspectId = provider.inspectPersonId;
+    final inspectActive = inspectId != null;
+    final inspectHighlight = inspectActive
+        ? provider.inspectHighlightIds
+        : const <String>{};
+
+    bool personFaded(String id) {
+      if (inspectActive && !inspectHighlight.contains(id)) return true;
+      return focusActive && !focusSet.contains(id);
+    }
+    bool relFaded(Relationship r) {
+      if (inspectActive) {
+        // In inspect mode, ONLY emotional rels touching the inspect node
+        // render normally — every other line (including structural ties of
+        // the inspect node itself) is dimmed.
+        return !provider.isEmotionalRelOnInspected(r);
+      }
+      return focusActive &&
+          (!focusSet.contains(r.sourceId) || !focusSet.contains(r.targetId));
+    }
+    final fadedLayerPaint = Paint()
+      ..color = const Color(0x33FFFFFF); // ~20% opacity for the dimmed layer
+
+    void drawFaded(VoidCallback body) {
+      canvas.saveLayer(null, fadedLayerPaint);
+      body();
+      canvas.restore();
+    }
+
     // Build couple-relationship lookup: unordered pair of person ids -> rel.
     // Used so children of a couple can originate from the midpoint of the
     // existing link between their parents.
@@ -496,16 +533,29 @@ class _GenogramPainter extends CustomPainter {
         (r) => provider.selectedRelationshipId == r.id,
       );
 
-      // Single parent, single child: keep the simple straight line.
-      if (parents.length == 1 && children.length == 1) {
-        RelationPainter.paintRelationship(
-          canvas, childRels.first, parents.first, children.first,
-          selected: anySelected,
-        );
-        return;
+      // Group is faded if NO parent and NO child is highlighted under the
+      // active dim mode (focus or inspect).
+      final groupFaded = (focusActive || inspectActive) &&
+          parents.every((p) => personFaded(p.id)) &&
+          children.every((c) => personFaded(c.id));
+
+      void drawGroup() {
+        // Single parent, single child: keep the simple straight line.
+        if (parents.length == 1 && children.length == 1) {
+          RelationPainter.paintRelationship(
+            canvas, childRels.first, parents.first, children.first,
+            selected: anySelected,
+          );
+          return;
+        }
+        _paintFamilyGroup(canvas, parents, children, anySelected);
       }
 
-      _paintFamilyGroup(canvas, parents, children, anySelected);
+      if (groupFaded) {
+        drawFaded(drawGroup);
+      } else {
+        drawGroup();
+      }
     });
 
     // Draw sibling relationships. Connected components of >=3 siblings share
@@ -555,14 +605,23 @@ class _GenogramPainter extends CustomPainter {
         final selected = rels.any(
           (r) => provider.selectedRelationshipId == r.id,
         );
-        if (people.length == 2) {
-          // Just a pair — draw the regular single line.
-          RelationPainter.paintRelationship(
-            canvas, rels.first, people[0], people[1],
-            selected: selected,
-          );
+        final groupFaded = (focusActive || inspectActive) &&
+            people.every((p) => personFaded(p.id));
+        void drawSib() {
+          if (people.length == 2) {
+            // Just a pair — draw the regular single line.
+            RelationPainter.paintRelationship(
+              canvas, rels.first, people[0], people[1],
+              selected: selected,
+            );
+          } else {
+            _paintSiblingBar(canvas, people, selected);
+          }
+        }
+        if (groupFaded) {
+          drawFaded(drawSib);
         } else {
-          _paintSiblingBar(canvas, people, selected);
+          drawSib();
         }
       });
     }
@@ -572,23 +631,35 @@ class _GenogramPainter extends CustomPainter {
       final src = provider.persons[rel.sourceId];
       final tgt = provider.persons[rel.targetId];
       if (src == null || tgt == null) continue;
-      RelationPainter.paintRelationship(
-        canvas, rel, src, tgt,
-        selected: provider.selectedRelationshipId == rel.id,
-      );
+      void drawIt() => RelationPainter.paintRelationship(
+            canvas, rel, src, tgt,
+            selected: provider.selectedRelationshipId == rel.id,
+          );
+      if (relFaded(rel)) {
+        drawFaded(drawIt);
+      } else {
+        drawIt();
+      }
     }
 
     // Draw nodes
     for (final person in provider.persons.values) {
-      final center = person.position + const Offset(kNodeSize / 2, kNodeSize / 2);
+      final center =
+          person.position + const Offset(kNodeSize / 2, kNodeSize / 2);
       final isMulti = provider.selectedPersonIds.contains(person.id);
-      NodePainter.paintPerson(
-        canvas,
-        person,
-        center,
-        selected: provider.selectedPersonId == person.id || isMulti,
-        isConnectSource: provider.connectSourceId == person.id,
-      );
+      void drawNode() => NodePainter.paintPerson(
+            canvas,
+            person,
+            center,
+            selected:
+                provider.selectedPersonId == person.id || isMulti,
+            isConnectSource: provider.connectSourceId == person.id,
+          );
+      if (personFaded(person.id)) {
+        drawFaded(drawNode);
+      } else {
+        drawNode();
+      }
     }
 
     // Marquee rectangle overlay (in world coords).

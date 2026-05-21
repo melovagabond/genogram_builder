@@ -100,6 +100,16 @@ class _MainScreenState extends State<MainScreen> {
                 child: _MultiSelectActionBar(provider: provider),
               ),
             ),
+          if (provider.isFocused)
+            Positioned(
+              top: 8, left: 0, right: 0,
+              child: Center(child: _FocusBanner(provider: provider)),
+            ),
+          if (provider.isInspecting)
+            Positioned(
+              top: 56, right: 12, bottom: 48,
+              child: _InspectPanel(provider: provider),
+            ),
           Positioned(
             right: 12, bottom: 96,
             child: _ZoomControls(provider: provider),
@@ -161,6 +171,39 @@ class _AppBar extends StatelessWidget {
             provider.canUndo ? provider.undo : () {},
           ),
         ),
+        if (provider.selectedPersonId != null)
+          _tbBtn(
+            context,
+            provider.focusPersonId == provider.selectedPersonId
+                ? 'Unfocus'
+                : 'Focus',
+            () {
+              final sel = provider.selectedPersonId;
+              if (sel == null) return;
+              if (provider.focusPersonId == sel) {
+                provider.clearFocus();
+              } else {
+                provider.setFocusPerson(sel);
+              }
+            },
+            active: provider.focusPersonId == provider.selectedPersonId,
+            activeColor: const Color(0xFFFFC83D),
+          ),
+        if (provider.selectedPersonId != null)
+          _tbBtn(
+            context,
+            provider.isInspecting ? 'Hide Ties' : 'Show Ties',
+            () {
+              if (provider.isInspecting) {
+                provider.hideInspect();
+              } else {
+                final sel = provider.selectedPersonId;
+                if (sel != null) provider.setInspectPerson(sel);
+              }
+            },
+            active: provider.isInspecting,
+            activeColor: kAccentOrange,
+          ),
         _divider(),
         _tbBtn(context, 'Layout', () {
           provider.runAutoLayout();
@@ -786,6 +829,333 @@ class _ZoomControls extends StatelessWidget {
                 : Icon(icon, size: 16, color: kText2),
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ----------------------------------------------------------------
+// Focus banner — shown at top when focus mode is active.
+// ----------------------------------------------------------------
+class _FocusBanner extends StatelessWidget {
+  final GenogramProvider provider;
+  const _FocusBanner({required this.provider});
+
+  @override
+  Widget build(BuildContext context) {
+    final id = provider.focusPersonId;
+    if (id == null) return const SizedBox.shrink();
+    final p = provider.persons[id];
+    final name = p?.name.isNotEmpty == true ? p!.name : '(unnamed)';
+    const gold = Color(0xFFFFC83D);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: gold.withOpacity(0.12),
+        border: Border.all(color: gold.withOpacity(0.55)),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            'FOCUS: $name',
+            style: const TextStyle(
+              color: gold, fontSize: 12,
+              fontFamily: 'monospace', letterSpacing: 1,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(width: 10),
+          _depthBtn('−', () =>
+              provider.setFocusDepth(provider.focusDepth - 1)),
+          Container(
+            margin: const EdgeInsets.symmetric(horizontal: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              color: kSurface2,
+              borderRadius: BorderRadius.circular(3),
+              border: Border.all(color: kBorder),
+            ),
+            child: Text(
+              'depth ${provider.focusDepth}',
+              style: const TextStyle(
+                color: kText, fontSize: 10, fontFamily: 'monospace'),
+            ),
+          ),
+          _depthBtn('+', () =>
+              provider.setFocusDepth(provider.focusDepth + 1)),
+          const SizedBox(width: 8),
+          _depthBtn('✕', provider.clearFocus, danger: true),
+        ],
+      ),
+    );
+  }
+
+  Widget _depthBtn(String label, VoidCallback onTap, {bool danger = false}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+        decoration: BoxDecoration(
+          color: kSurface2,
+          borderRadius: BorderRadius.circular(3),
+          border: Border.all(color: danger ? kAccentRed : kBorder),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: danger ? kAccentRed : kText,
+            fontSize: 12,
+            fontFamily: 'monospace',
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ----------------------------------------------------------------
+// Inspect panel — readable summary of emotional ties to a person.
+// Categories shown: Positive, Negative, Violence, Abuse, Control.
+// (Neutral and Structural are intentionally omitted.)
+// ----------------------------------------------------------------
+class _InspectPanel extends StatelessWidget {
+  final GenogramProvider provider;
+  const _InspectPanel({required this.provider});
+
+  static const Map<String, Color> _catColor = {
+    'Positive': Color(0xFF4CAF50),
+    'Negative': Color(0xFFE57373),
+    'Violence': Color(0xFFD32F2F),
+    'Abuse': Color(0xFFB71C1C),
+    'Control': Color(0xFFBA68C8),
+  };
+  static const List<String> _catOrder = [
+    'Positive', 'Negative', 'Violence', 'Abuse', 'Control',
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final id = provider.inspectPersonId;
+    if (id == null) return const SizedBox.shrink();
+    final subject = provider.persons[id];
+    final subjectName =
+        (subject?.name.isNotEmpty == true) ? subject!.name : '(unnamed)';
+
+    final rels = provider.inspectEmotionalRels;
+    final grouped = <String, List<Relationship>>{};
+    for (final r in rels) {
+      final cat = kRelationshipDefs[r.type]?.category ?? 'Other';
+      grouped.putIfAbsent(cat, () => []).add(r);
+    }
+
+    return Material(
+      color: Colors.transparent,
+      child: Container(
+        width: 280,
+        decoration: BoxDecoration(
+          color: kSurface.withOpacity(0.96),
+          border: Border.all(color: kBorder),
+          borderRadius: BorderRadius.circular(8),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x66000000), blurRadius: 12, offset: Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Header
+            Container(
+              padding: const EdgeInsets.fromLTRB(10, 8, 6, 8),
+              decoration: const BoxDecoration(
+                border: Border(bottom: BorderSide(color: kBorder)),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('TIES TO',
+                            style: TextStyle(
+                                color: kText2, fontSize: 9,
+                                fontFamily: 'monospace', letterSpacing: 1)),
+                        const SizedBox(height: 2),
+                        Text(subjectName,
+                            style: const TextStyle(
+                                color: kText, fontSize: 14,
+                                fontFamily: 'monospace',
+                                fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: provider.hideInspect,
+                    icon: const Icon(Icons.close,
+                        size: 16, color: kText2),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(
+                        minWidth: 28, minHeight: 28),
+                    splashRadius: 16,
+                    tooltip: 'Close',
+                  ),
+                ],
+              ),
+            ),
+            // Body
+            Flexible(
+              child: rels.isEmpty
+                  ? const Padding(
+                      padding: EdgeInsets.all(14),
+                      child: Text(
+                        'No emotional, violence, or abuse ties recorded.',
+                        style: TextStyle(
+                            color: kText2, fontSize: 12,
+                            fontFamily: 'monospace'),
+                      ),
+                    )
+                  : ListView(
+                      shrinkWrap: true,
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                      children: [
+                        for (final cat in _catOrder)
+                          if (grouped[cat] != null)
+                            _CategorySection(
+                              category: cat,
+                              color: _catColor[cat]!,
+                              relationships: grouped[cat]!,
+                              subjectId: id,
+                              provider: provider,
+                            ),
+                      ],
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CategorySection extends StatelessWidget {
+  final String category;
+  final Color color;
+  final List<Relationship> relationships;
+  final String subjectId;
+  final GenogramProvider provider;
+  const _CategorySection({
+    required this.category,
+    required this.color,
+    required this.relationships,
+    required this.subjectId,
+    required this.provider,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(10, 6, 10, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 8, height: 8,
+                decoration: BoxDecoration(
+                    color: color, borderRadius: BorderRadius.circular(2)),
+              ),
+              const SizedBox(width: 6),
+              Text(category.toUpperCase(),
+                  style: TextStyle(
+                      color: color, fontSize: 10,
+                      fontFamily: 'monospace', letterSpacing: 1,
+                      fontWeight: FontWeight.bold)),
+              const SizedBox(width: 6),
+              Text('(${relationships.length})',
+                  style: const TextStyle(
+                      color: kText2, fontSize: 10,
+                      fontFamily: 'monospace')),
+            ],
+          ),
+          const SizedBox(height: 4),
+          for (final rel in relationships)
+            _TieRow(rel: rel, subjectId: subjectId, provider: provider),
+        ],
+      ),
+    );
+  }
+}
+
+class _TieRow extends StatelessWidget {
+  final Relationship rel;
+  final String subjectId;
+  final GenogramProvider provider;
+  const _TieRow({
+    required this.rel,
+    required this.subjectId,
+    required this.provider,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final otherId =
+        rel.sourceId == subjectId ? rel.targetId : rel.sourceId;
+    final other = provider.persons[otherId];
+    final name =
+        (other?.name.isNotEmpty == true) ? other!.name : '(unnamed)';
+    final label = kRelationshipDefs[rel.type]?.label ?? rel.type.name;
+    final note = rel.notes;
+
+    // Direction arrow only useful when the relationship is directional
+    // (source -> target). For symmetric ties we just show "↔".
+    final outgoing = rel.sourceId == subjectId;
+    final arrow = outgoing ? '→' : '←';
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(arrow,
+                  style: const TextStyle(
+                      color: kText2, fontSize: 11,
+                      fontFamily: 'monospace')),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(name,
+                    style: const TextStyle(
+                        color: kText, fontSize: 12,
+                        fontFamily: 'monospace',
+                        fontWeight: FontWeight.bold),
+                    overflow: TextOverflow.ellipsis),
+              ),
+            ],
+          ),
+          Padding(
+            padding: const EdgeInsets.only(left: 17, top: 1),
+            child: Text(label,
+                style: const TextStyle(
+                    color: kText2, fontSize: 11,
+                    fontFamily: 'monospace')),
+          ),
+          if (note.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(left: 17, top: 2),
+              child: Text('“$note”',
+                  style: const TextStyle(
+                      color: kText2, fontSize: 10,
+                      fontFamily: 'monospace',
+                      fontStyle: FontStyle.italic)),
+            ),
+        ],
       ),
     );
   }

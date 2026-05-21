@@ -16,6 +16,23 @@ class GenogramProvider extends ChangeNotifier {
   Offset _viewOffset = Offset.zero;
   double _viewScale = 1.0;
 
+  // Focus mode: when set, only the focus person and their N-hop relatives are
+  // drawn at full opacity. Everyone else fades out so a section of a large
+  // tree can be inspected without visual noise from unrelated branches.
+  String? _focusPersonId;
+  int _focusDepth = 2;
+
+  // Inspect mode: when set, only emotional/clinical (non-structural,
+  // non-neutral) relationships touching this person are shown at full
+  // opacity. Used together with a side panel summarising those ties.
+  //
+  // Inspect auto-engages whenever a single person is selected in
+  // [AppMode.select] (no marquee, no connect). The user can dismiss the
+  // panel for the current selection without deselecting via [hideInspect],
+  // which sets [_inspectSuppressed] until the selection changes.
+  String? _inspectPersonId;
+  bool _inspectSuppressed = false;
+
   // Undo stack (state snapshots taken just before each mutation).
   final List<GenogramState> _undoStack = <GenogramState>[];
   static const int _undoLimit = 100;
@@ -66,6 +83,122 @@ class GenogramProvider extends ChangeNotifier {
 
   Map<String, Person> get persons => _state.persons;
   Map<String, Relationship> get relationships => _state.relationships;
+
+  String? get focusPersonId => _focusPersonId;
+  int get focusDepth => _focusDepth;
+  bool get isFocused => _focusPersonId != null;
+
+  /// Persons within [_focusDepth] hops of [_focusPersonId] via any
+  /// relationship. Empty when focus mode is off (meaning: render everyone).
+  Set<String> get focusedPersonIds {
+    final root = _focusPersonId;
+    if (root == null) return const <String>{};
+    final adjacency = <String, Set<String>>{};
+    for (final rel in _state.relationships.values) {
+      adjacency.putIfAbsent(rel.sourceId, () => <String>{}).add(rel.targetId);
+      adjacency.putIfAbsent(rel.targetId, () => <String>{}).add(rel.sourceId);
+    }
+    final visited = <String>{root};
+    var frontier = <String>{root};
+    for (var i = 0; i < _focusDepth; i++) {
+      final next = <String>{};
+      for (final id in frontier) {
+        for (final n in (adjacency[id] ?? const <String>{})) {
+          if (visited.add(n)) next.add(n);
+        }
+      }
+      if (next.isEmpty) break;
+      frontier = next;
+    }
+    return visited;
+  }
+
+  void setFocusPerson(String? id) {
+    _focusPersonId = id;
+    notifyListeners();
+  }
+
+  void setFocusDepth(int depth) {
+    _focusDepth = depth.clamp(0, 10);
+    notifyListeners();
+  }
+
+  void clearFocus() {
+    _focusPersonId = null;
+    notifyListeners();
+  }
+
+  // ----------------------------------------------------------------
+  // Inspect mode
+  // ----------------------------------------------------------------
+  static const Set<String> kEmotionalCategories = {
+    'Positive', 'Negative', 'Violence', 'Abuse', 'Control',
+  };
+
+  String? get inspectPersonId {
+    // Explicit override (e.g. Inspect toolbar button) wins.
+    if (_inspectPersonId != null) return _inspectPersonId;
+    // Auto-engage on single-person selection in select mode.
+    if (_inspectSuppressed) return null;
+    if (_mode != AppMode.select) return null;
+    if (_selectedPersonIds.isNotEmpty) return null;
+    return _selectedPersonId;
+  }
+  bool get isInspecting => inspectPersonId != null;
+
+  /// Emotional/clinical relationships (Positive, Negative, Violence, Abuse,
+  /// Control — skipping Structural and Neutral) that touch the inspected
+  /// person. Empty when inspect mode is off.
+  List<Relationship> get inspectEmotionalRels {
+    final id = inspectPersonId;
+    if (id == null) return const [];
+    return _state.relationships.values.where((r) {
+      if (r.sourceId != id && r.targetId != id) return false;
+      final cat = kRelationshipDefs[r.type]?.category ?? '';
+      return kEmotionalCategories.contains(cat);
+    }).toList();
+  }
+
+  /// Ids of all "other" persons connected to the inspected person by an
+  /// emotional relationship. The inspected id itself is included.
+  Set<String> get inspectHighlightIds {
+    final id = inspectPersonId;
+    if (id == null) return const {};
+    final s = <String>{id};
+    for (final r in inspectEmotionalRels) {
+      s.add(r.sourceId == id ? r.targetId : r.sourceId);
+    }
+    return s;
+  }
+
+  bool isEmotionalRelOnInspected(Relationship r) {
+    final id = inspectPersonId;
+    if (id == null) return false;
+    if (r.sourceId != id && r.targetId != id) return false;
+    final cat = kRelationshipDefs[r.type]?.category ?? '';
+    return kEmotionalCategories.contains(cat);
+  }
+
+  /// Force inspect to a specific person (overrides selection-based auto).
+  void setInspectPerson(String? id) {
+    _inspectPersonId = id;
+    _inspectSuppressed = false;
+    notifyListeners();
+  }
+
+  /// Hide the inspect panel for the current selection without deselecting.
+  /// The panel will reappear when a different person is selected.
+  void hideInspect() {
+    _inspectPersonId = null;
+    _inspectSuppressed = true;
+    notifyListeners();
+  }
+
+  void clearInspect() {
+    _inspectPersonId = null;
+    _inspectSuppressed = false;
+    notifyListeners();
+  }
 
   Person? get selectedPerson =>
       _selectedPersonId != null ? _state.persons[_selectedPersonId] : null;
@@ -225,6 +358,10 @@ class GenogramProvider extends ChangeNotifier {
   // Selection
   // ----------------------------------------------------------------
   void selectPerson(String? id) {
+    if (_selectedPersonId != id) {
+      _inspectSuppressed = false;
+      _inspectPersonId = null;
+    }
     _selectedPersonId = id;
     _selectedRelationshipId = null;
     notifyListeners();
