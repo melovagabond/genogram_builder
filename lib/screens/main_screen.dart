@@ -205,6 +205,13 @@ class _AppBar extends StatelessWidget {
             activeColor: kAccentOrange,
           ),
         _divider(),
+        _tbBtn(
+          context,
+          provider.hideEmotionalTies ? 'Show Emotions' : 'Hide Emotions',
+          () => provider.toggleHideEmotionalTies(),
+          active: provider.hideEmotionalTies,
+          activeColor: const Color(0xFFBA68C8),
+        ),
         _tbBtn(context, 'Layout', () {
           provider.runAutoLayout();
           Future.delayed(const Duration(milliseconds: 80), () {

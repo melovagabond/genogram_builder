@@ -33,6 +33,11 @@ class GenogramProvider extends ChangeNotifier {
   String? _inspectPersonId;
   bool _inspectSuppressed = false;
 
+  // Global visibility toggle: when true, emotional/clinical ties (Positive,
+  // Negative, Violence, Abuse, Control) are not rendered at all — leaving a
+  // clean structural-only view of the family.
+  bool _hideEmotionalTies = false;
+
   // Undo stack (state snapshots taken just before each mutation).
   final List<GenogramState> _undoStack = <GenogramState>[];
   static const int _undoLimit = 100;
@@ -198,6 +203,27 @@ class GenogramProvider extends ChangeNotifier {
     _inspectPersonId = null;
     _inspectSuppressed = false;
     notifyListeners();
+  }
+
+  // ----------------------------------------------------------------
+  // Emotional tie visibility (global)
+  // ----------------------------------------------------------------
+  bool get hideEmotionalTies => _hideEmotionalTies;
+
+  void toggleHideEmotionalTies() {
+    _hideEmotionalTies = !_hideEmotionalTies;
+    notifyListeners();
+  }
+
+  void setHideEmotionalTies(bool v) {
+    if (_hideEmotionalTies == v) return;
+    _hideEmotionalTies = v;
+    notifyListeners();
+  }
+
+  static bool isEmotionalRel(Relationship r) {
+    final cat = kRelationshipDefs[r.type]?.category ?? '';
+    return kEmotionalCategories.contains(cat);
   }
 
   Person? get selectedPerson =>

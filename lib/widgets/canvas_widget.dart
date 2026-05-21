@@ -280,7 +280,9 @@ class _GenogramCanvasState extends State<GenogramCanvas> {
   }
 
   String? _hitTestRelation(Offset worldPos, GenogramProvider provider) {
+    final hideEmotional = provider.hideEmotionalTies;
     for (final rel in provider.relationships.values) {
+      if (hideEmotional && GenogramProvider.isEmotionalRel(rel)) continue;
       final src = provider.persons[rel.sourceId];
       final tgt = provider.persons[rel.targetId];
       if (src == null || tgt == null) continue;
@@ -452,6 +454,47 @@ class _GenogramPainter extends CustomPainter {
       if (coupleTypes.contains(rel.type)) {
         couples[pairKey(rel.sourceId, rel.targetId)] = rel;
       }
+    }
+
+    // Multi-partner lane offsets: when a person has more than one couple
+    // relationship, each of their couple lines is shifted to a distinct
+    // vertical lane so the lines don't collapse on top of each other when
+    // the partners happen to share a Y coordinate. The shift is small
+    // (~10px per lane) and only affects the couple-line draw — the parent
+    // anchors used for child drops remain at the original centerline so
+    // family groups still read naturally.
+    final coupleRelsByPerson = <String, List<Relationship>>{};
+    for (final rel in provider.relationships.values) {
+      if (!coupleTypes.contains(rel.type)) continue;
+      coupleRelsByPerson.putIfAbsent(rel.sourceId, () => []).add(rel);
+      coupleRelsByPerson.putIfAbsent(rel.targetId, () => []).add(rel);
+    }
+    for (final list in coupleRelsByPerson.values) {
+      list.sort((a, b) => a.id.compareTo(b.id));
+    }
+    double coupleLaneOffset(Relationship rel) {
+      // Choose the "anchor" person (the one that has multiple partners).
+      // If both sides do, pick the lexicographically smaller id so we get a
+      // single consistent lane index.
+      final a = coupleRelsByPerson[rel.sourceId] ?? const [];
+      final b = coupleRelsByPerson[rel.targetId] ?? const [];
+      String? anchorId;
+      if (a.length > 1 && b.length > 1) {
+        anchorId = rel.sourceId.compareTo(rel.targetId) <= 0
+            ? rel.sourceId
+            : rel.targetId;
+      } else if (a.length > 1) {
+        anchorId = rel.sourceId;
+      } else if (b.length > 1) {
+        anchorId = rel.targetId;
+      }
+      if (anchorId == null) return 0.0;
+      final list = coupleRelsByPerson[anchorId]!;
+      final idx = list.indexWhere((r) => r.id == rel.id);
+      if (idx <= 0) return 0.0;
+      // Alternate above/below: 1 -> -12, 2 -> +12, 3 -> -24, 4 -> +24, …
+      final step = ((idx + 1) ~/ 2) * 12.0;
+      return (idx.isOdd) ? -step : step;
     }
 
     // Group parent-child relationships by the (sorted) set of parents.
@@ -627,14 +670,30 @@ class _GenogramPainter extends CustomPainter {
     }
 
     // Draw remaining relationships.
+    final hideEmotional = provider.hideEmotionalTies;
     for (final rel in otherRels) {
+      if (hideEmotional && GenogramProvider.isEmotionalRel(rel)) continue;
       final src = provider.persons[rel.sourceId];
       final tgt = provider.persons[rel.targetId];
       if (src == null || tgt == null) continue;
-      void drawIt() => RelationPainter.paintRelationship(
+      final laneOffset =
+          coupleTypes.contains(rel.type) ? coupleLaneOffset(rel) : 0.0;
+      void drawIt() {
+        if (laneOffset != 0.0) {
+          canvas.save();
+          canvas.translate(0, laneOffset);
+          RelationPainter.paintRelationship(
             canvas, rel, src, tgt,
             selected: provider.selectedRelationshipId == rel.id,
           );
+          canvas.restore();
+        } else {
+          RelationPainter.paintRelationship(
+            canvas, rel, src, tgt,
+            selected: provider.selectedRelationshipId == rel.id,
+          );
+        }
+      }
       if (relFaded(rel)) {
         drawFaded(drawIt);
       } else {
