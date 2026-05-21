@@ -14,7 +14,7 @@ permissions:
   contents: write
 
 env:
-  FLUTTER_VERSION: '3.32.0'
+  FLUTTER_VERSION: '3.44.0'
   FLUTTER_CHANNEL: 'stable'
 
 jobs:
@@ -195,7 +195,7 @@ jobs:
   # ------------------------------------------------------------------
   release:
     name: Publish Release
-    needs: [build-android, build-web, build-linux, build-windows, build-macos]
+    needs: [build-android, build-web, build-linux, build-windows]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -209,7 +209,13 @@ jobs:
         run: |
           mkdir -p dist
           find artifacts -type f -exec cp -v {} dist/ \;
+          echo "----- Final dist/ contents -----"
           ls -lah dist
+          # Fail early if nothing was produced.
+          if [ -z "$(ls -A dist 2>/dev/null)" ]; then
+            echo "::error::No artifacts were produced — refusing to publish an empty release."
+            exit 1
+          fi
 
       - name: Resolve tag
         id: tag
@@ -225,5 +231,23 @@ jobs:
         with:
           tag_name: ${{ steps.tag.outputs.name }}
           name: ${{ steps.tag.outputs.name }}
+          target_commitish: ${{ github.sha }}
           generate_release_notes: true
+          draft: false
+          prerelease: false
+          make_latest: 'true'
+          fail_on_unmatched_files: true
           files: dist/*
+
+      - name: Job summary
+        if: always()
+        run: |
+          {
+            echo "## Release \`${{ steps.tag.outputs.name }}\`"
+            echo ""
+            echo "Uploaded the following files:"
+            echo ""
+            echo '```'
+            (cd dist && ls -lah) || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

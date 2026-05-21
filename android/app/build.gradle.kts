@@ -7,8 +7,11 @@ plugins {
 
 android {
     namespace = "com.example.genogram_builder"
-    compileSdk = flutter.compileSdkVersion
-    ndkVersion = flutter.ndkVersion
+    // Plugins (printing, file_picker, share_plus, path_provider, etc.) require
+    // a recent compile SDK (lStar attr is API 31+) and NDK 27.x. Pin them
+    // explicitly so CI doesn't pick the older defaults from the Flutter SDK.
+    compileSdk = 36
+    ndkVersion = "28.2.13676358"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
