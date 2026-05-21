@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../providers/genogram_provider.dart';
 import '../painters/node_painter.dart';
@@ -89,8 +90,20 @@ class _GenogramCanvasState extends State<GenogramCanvas> {
   // ----------------------------------------------------------------
   // Gesture handlers
   // ----------------------------------------------------------------
+
+  /// Shift is held on the hardware keyboard. Used to enable additive
+  /// multi-selection from any mode (shift-click to toggle a node into the
+  /// selection set; shift-drag on empty space to draw a marquee rectangle).
+  bool get _shiftPressed {
+    final pressed = HardwareKeyboard.instance.logicalKeysPressed;
+    return pressed.contains(LogicalKeyboardKey.shiftLeft) ||
+        pressed.contains(LogicalKeyboardKey.shiftRight) ||
+        pressed.contains(LogicalKeyboardKey.shift);
+  }
+
   void _onTapUp(Offset local, GenogramProvider provider, BuildContext context) {
     final worldPos = _toWorld(local, provider);
+    final shift = _shiftPressed;
 
     // Check node hit first
     final nodeId = _hitTestNode(worldPos, provider);
@@ -99,7 +112,14 @@ class _GenogramCanvasState extends State<GenogramCanvas> {
         provider.handleConnectTap(nodeId, onReadyToPick: (src, tgt) {
           _showRelationshipPicker(context, src, tgt, provider);
         });
-      } else if (provider.mode == AppMode.marquee) {
+      } else if (provider.mode == AppMode.marquee || shift) {
+        // Shift-click anywhere toggles the node into the multi-selection,
+        // promoting a single selection into a set without changing modes.
+        if (shift && provider.mode == AppMode.select &&
+            provider.selectedPersonId != null &&
+            provider.selectedPersonIds.isEmpty) {
+          provider.setMultiSelection({provider.selectedPersonId!});
+        }
         provider.togglePersonInMultiSelection(nodeId);
       } else {
         provider.selectPerson(nodeId);
@@ -114,10 +134,11 @@ class _GenogramCanvasState extends State<GenogramCanvas> {
       return;
     }
 
-    // Tap on empty space
+    // Tap on empty space. Shift-click on empty space preserves the current
+    // multi-selection (so the user can add more nodes); otherwise clear.
     if (provider.mode == AppMode.marquee) {
-      provider.clearMultiSelection();
-    } else {
+      if (!shift) provider.clearMultiSelection();
+    } else if (!shift) {
       provider.clearSelection();
     }
   }
@@ -155,16 +176,28 @@ class _GenogramCanvasState extends State<GenogramCanvas> {
     final nodeId = _hitTestNode(worldPos, provider);
 
     // In marquee mode, dragging on empty space starts a selection rectangle.
-    // Dragging on a node still moves the node.
-    if (provider.mode == AppMode.marquee &&
-        nodeId == null &&
-        d.pointerCount == 1) {
+    // Dragging on a node still moves the node. Shift-drag on empty space
+    // also starts a marquee from any mode (additive to the current
+    // selection), so web users can hold Shift and drag to box-select.
+    final shift = _shiftPressed;
+    final canMarquee = nodeId == null &&
+        d.pointerCount == 1 &&
+        (provider.mode == AppMode.marquee || shift);
+    if (canMarquee) {
       _isNodeDrag = false;
       _draggingNodeId = null;
       _marqueeStart = worldPos;
       _marqueeEnd = worldPos;
-      _marqueeBaseSelection = provider.selectedPersonIds.toSet();
-      _marqueeAdditive = _marqueeBaseSelection.isNotEmpty;
+      // Seed the additive base from existing multi-selection, or promote a
+      // single selection into the set when shift-dragging.
+      final base = provider.selectedPersonIds.toSet();
+      if (shift &&
+          base.isEmpty &&
+          provider.selectedPersonId != null) {
+        base.add(provider.selectedPersonId!);
+      }
+      _marqueeBaseSelection = base;
+      _marqueeAdditive = shift || base.isNotEmpty;
       setState(() {});
       return;
     }

@@ -583,33 +583,155 @@ class GenogramProvider extends ChangeNotifier {
   // ----------------------------------------------------------------
   // Layout
   // ----------------------------------------------------------------
+  /// Layered layout with two anti-crossing passes per generation:
+  ///   1. Sort by parent barycenter so children land under their parents.
+  ///   2. Pull each person's first un-placed same-generation partner in
+  ///      directly after them, so couple lines stay short.
+  ///
+  /// Siblings of the same couple share the same barycenter, so they fall
+  /// into a contiguous block — sibling bars and parent-child drops collapse
+  /// to tidy local geometry instead of long diagonal sweeps.
   void runAutoLayout() {
     final ps = _state.persons.values.toList();
     if (ps.isEmpty) return;
     _pushUndo();
 
-    // Group by generation
+    const coupleTypes = <RelationshipType>{
+      RelationshipType.married,
+      RelationshipType.partnership,
+      RelationshipType.engaged,
+      RelationshipType.separated,
+      RelationshipType.divorced,
+    };
+
+    // Adjacency: person -> couple partners, child -> parents.
+    final partners = <String, List<String>>{};
+    final parentsOf = <String, List<String>>{};
+    for (final r in _state.relationships.values) {
+      if (coupleTypes.contains(r.type)) {
+        partners.putIfAbsent(r.sourceId, () => []).add(r.targetId);
+        partners.putIfAbsent(r.targetId, () => []).add(r.sourceId);
+      } else if (r.type == RelationshipType.parentChild) {
+        parentsOf.putIfAbsent(r.targetId, () => []).add(r.sourceId);
+      }
+    }
+
+    // Bucket by generation.
     final Map<int, List<Person>> genMap = {};
     for (final p in ps) {
       genMap.putIfAbsent(p.generation, () => []).add(p);
     }
-
     final gens = genMap.keys.toList()..sort();
     final minGen = gens.first;
-    final updatedPersons = Map<String, Person>.from(_state.persons);
+
+    const nodeSize = 52.0;
+    const hSpacing = 100.0;
+    const vSpacing = 150.0;
+    final step = nodeSize + hSpacing;
+
+    // x positions resolved generation-by-generation (top-down) so each row
+    // can use the previous row's x for barycenter math.
+    final xOf = <String, double>{};
+    final orderByGen = <int, List<String>>{};
 
     for (final g in gens) {
-      final row = genMap[g]!;
-      const nodeSize = 52.0;
-      const hSpacing = 100.0;
-      final totalW = row.length * (nodeSize + hSpacing) - hSpacing;
+      final rowIds = genMap[g]!.map((p) => p.id).toList();
+
+      // Sort key for a person:
+      //   - barycenter of parents' x (already assigned in a higher gen),
+      //   - else average of any same-gen partners' current x,
+      //   - else the person's current x (preserves user-positioned roots).
+      double keyOf(String id) {
+        final pars = parentsOf[id] ?? const <String>[];
+        final parXs = <double>[
+          for (final pid in pars)
+            if (xOf[pid] != null) xOf[pid]!,
+        ];
+        if (parXs.isNotEmpty) {
+          var s = 0.0;
+          for (final v in parXs) s += v;
+          return s / parXs.length;
+        }
+        return _state.persons[id]?.position.dx ?? 0.0;
+      }
+
+      // Tie-breaker: when two persons share the same barycenter (e.g.
+      // siblings of the same couple) order them by birth year ascending —
+      // oldest first, left-to-right — so siblings read chronologically.
+      // Persons without a birth year sort after those that have one, with
+      // id as the final stable tie-breaker.
+      int byBirthThenId(String a, String b) {
+        final by = _state.persons[a]?.birthYear;
+        final bz = _state.persons[b]?.birthYear;
+        if (by != null && bz != null) {
+          final c = by.compareTo(bz);
+          if (c != 0) return c;
+        } else if (by != null) {
+          return -1;
+        } else if (bz != null) {
+          return 1;
+        }
+        return a.compareTo(b);
+      }
+
+      rowIds.sort((a, b) {
+        final ka = keyOf(a), kb = keyOf(b);
+        final c = ka.compareTo(kb);
+        if (c != 0) return c;
+        return byBirthThenId(a, b);
+      });
+
+      // Root rows have no placed parents, so every keyOf falls back to the
+      // existing dx and produces incidental ordering. Sort those rows by
+      // birth year (then id) outright so the eldest sit to the left.
+      final anyParentPlaced = rowIds.any((id) =>
+          (parentsOf[id] ?? const <String>[])
+              .any((pid) => xOf[pid] != null));
+      if (!anyParentPlaced) {
+        rowIds.sort(byBirthThenId);
+      }
+
+      // Interleave: for each person, immediately follow with one un-placed
+      // same-generation partner. This keeps couple lines short while not
+      // disrupting the parent-driven ordering.
+      final placed = <String>{};
+      final finalOrder = <String>[];
+      for (final id in rowIds) {
+        if (placed.contains(id)) continue;
+        finalOrder.add(id);
+        placed.add(id);
+        final candidates = (partners[id] ?? const <String>[])
+            .where((pid) =>
+                !placed.contains(pid) &&
+                _state.persons[pid]?.generation == g)
+            .toList();
+        if (candidates.isNotEmpty) {
+          // Prefer the partner whose own barycenter is closest to this
+          // person's, so we don't yank a partner away from their own
+          // children.
+          final anchor = keyOf(id);
+          candidates.sort((a, b) =>
+              (keyOf(a) - anchor).abs().compareTo((keyOf(b) - anchor).abs()));
+          final pt = candidates.first;
+          finalOrder.add(pt);
+          placed.add(pt);
+        }
+      }
+      orderByGen[g] = finalOrder;
+
+      final totalW = finalOrder.length * step - hSpacing;
       final startX = -totalW / 2;
-      final y = (g - minGen) * 150.0;
-      for (int i = 0; i < row.length; i++) {
-        final p = row[i];
-        updatedPersons[p.id] = p.copyWith(
-          position: Offset(startX + i * (nodeSize + hSpacing), y),
-        );
+      for (var i = 0; i < finalOrder.length; i++) {
+        xOf[finalOrder[i]] = startX + i * step;
+      }
+    }
+
+    final updatedPersons = Map<String, Person>.from(_state.persons);
+    for (final g in gens) {
+      final y = (g - minGen) * vSpacing;
+      for (final id in orderByGen[g]!) {
+        final p = _state.persons[id]!;
+        updatedPersons[id] = p.copyWith(position: Offset(xOf[id]!, y));
       }
     }
 
