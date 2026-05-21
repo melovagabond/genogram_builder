@@ -162,33 +162,33 @@ jobs:
   # ------------------------------------------------------------------
   # macOS desktop build (zipped .app)
   # ------------------------------------------------------------------
-  build-macos:
-    name: Build macOS
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
+#   build-macos:
+#     name: Build macOS
+#     runs-on: macos-latest
+#     steps:
+#       - uses: actions/checkout@v4
 
-      - uses: subosito/flutter-action@v2
-        with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
-          channel: ${{ env.FLUTTER_CHANNEL }}
-          cache: true
+#       - uses: subosito/flutter-action@v2
+#         with:
+#           flutter-version: ${{ env.FLUTTER_VERSION }}
+#           channel: ${{ env.FLUTTER_CHANNEL }}
+#           cache: true
 
-      - run: flutter config --enable-macos-desktop
-      - run: flutter pub get
-      - run: flutter build macos --release
+#       - run: flutter config --enable-macos-desktop
+#       - run: flutter pub get
+#       - run: flutter build macos --release
 
-      - name: Zip macOS .app
-        run: |
-          mkdir -p dist
-          cd build/macos/Build/Products/Release
-          APP=$(ls -d *.app | head -n1)
-          zip -r "../../../../../dist/genogram_builder-macos.zip" "$APP"
+#       - name: Zip macOS .app
+#         run: |
+#           mkdir -p dist
+#           cd build/macos/Build/Products/Release
+#           APP=$(ls -d *.app | head -n1)
+#           zip -r "../../../../../dist/genogram_builder-macos.zip" "$APP"
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: macos
-          path: dist/*
+#       - uses: actions/upload-artifact@v4
+#         with:
+#           name: macos
+#           path: dist/*
 
   # ------------------------------------------------------------------
   # Aggregate artifacts and publish GitHub Release
