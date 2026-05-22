@@ -49,6 +49,11 @@ class ExportService {
     final sy = availH / contentH;
     final scale = (sx < sy ? sx : sy).clamp(0.05, 1.5);
 
+    // Explicit drawable size for the Stack/CustomPaint so layout
+    // doesn't collapse to zero (which would render a blank page).
+    final drawW = pageFormat.availableWidth;
+    final drawH = pageFormat.availableHeight - 80;
+
     final doc = pw.Document();
 
     doc.addPage(
@@ -74,18 +79,23 @@ class ExportService {
             ),
             pw.SizedBox(height: 8),
             pw.Expanded(
-              child: pw.Stack(
-                children: [
-                  // Shapes and lines via CustomPaint (no text)
-                  pw.CustomPaint(
-                    painter: (pdfCanvas, pdfSize) {
-                      _paintShapes(
-                          pdfCanvas, pdfSize, provider, minX, minY, scale, padding);
-                    },
-                  ),
-                  // Labels as pw widgets (correct font handling)
-                  ..._buildLabels(provider, minX, minY, scale, padding),
-                ],
+              child: pw.SizedBox(
+                width: drawW,
+                height: drawH,
+                child: pw.Stack(
+                  children: [
+                    // Shapes and lines via CustomPaint (no text)
+                    pw.CustomPaint(
+                      size: PdfPoint(drawW, drawH),
+                      painter: (pdfCanvas, pdfSize) {
+                        _paintShapes(
+                            pdfCanvas, pdfSize, provider, minX, minY, scale, padding);
+                      },
+                    ),
+                    // Labels as pw widgets (correct font handling)
+                    ..._buildLabels(provider, minX, minY, scale, padding),
+                  ],
+                ),
               ),
             ),
             pw.SizedBox(height: 8),
