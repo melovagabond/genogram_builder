@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import '../data/demo_genogram.dart';
 import '../models/genogram_state.dart';
 import '../models/person.dart';
 import '../models/relationship.dart';
@@ -7,7 +8,10 @@ import '../models/relationship.dart';
 enum AppMode { select, connect, marquee }
 
 class GenogramProvider extends ChangeNotifier {
-  GenogramState _state = GenogramState.empty();
+  GenogramProvider({GenogramState? initialState})
+      : _state = initialState ?? buildDemoGenogramState();
+
+  GenogramState _state;
   AppMode _mode = AppMode.select;
   String? _selectedPersonId;
   String? _selectedRelationshipId;
@@ -638,21 +642,44 @@ class GenogramProvider extends ChangeNotifier {
       final rowIds = genMap[g]!.map((p) => p.id).toList();
 
       // Sort key for a person:
-      //   - barycenter of parents' x (already assigned in a higher gen),
-      //   - else average of any same-gen partners' current x,
+      //   - if parents have unequal partner counts (multi-marriage), anchor
+      //     under the parent with FEWER partners so each child clusters
+      //     under their unique biological parent rather than under a shared
+      //     central ancestor;
+      //   - otherwise barycenter (midpoint) of placed parents;
       //   - else the person's current x (preserves user-positioned roots).
       double keyOf(String id) {
         final pars = parentsOf[id] ?? const <String>[];
-        final parXs = <double>[
+        final placedPars = <String>[
           for (final pid in pars)
-            if (xOf[pid] != null) xOf[pid]!,
+            if (xOf[pid] != null) pid,
         ];
-        if (parXs.isNotEmpty) {
-          var s = 0.0;
-          for (final v in parXs) s += v;
-          return s / parXs.length;
+        if (placedPars.isEmpty) {
+          return _state.persons[id]?.position.dx ?? 0.0;
         }
-        return _state.persons[id]?.position.dx ?? 0.0;
+        final counts = <String, int>{
+          for (final pid in placedPars)
+            pid: (partners[pid]?.length ?? 0),
+        };
+        var minCount = counts.values.first;
+        var maxCount = minCount;
+        for (final c in counts.values) {
+          if (c < minCount) minCount = c;
+          if (c > maxCount) maxCount = c;
+        }
+        if (minCount != maxCount) {
+          // Unequal partner counts → multi-marriage. Anchor under the
+          // parent with the fewest partners (the branch-exclusive parent).
+          final anchorPid =
+              placedPars.firstWhere((pid) => counts[pid] == minCount);
+          return xOf[anchorPid]!;
+        }
+        // Equal partner counts → standard couple, use midpoint.
+        var s = 0.0;
+        for (final pid in placedPars) {
+          s += xOf[pid]!;
+        }
+        return s / placedPars.length;
       }
 
       // Tie-breaker: when two persons share the same barycenter (e.g.
@@ -691,31 +718,36 @@ class GenogramProvider extends ChangeNotifier {
         rowIds.sort(byBirthThenId);
       }
 
-      // Interleave: for each person, immediately follow with one un-placed
-      // same-generation partner. This keeps couple lines short while not
-      // disrupting the parent-driven ordering.
+      // Chain partners: for each person, immediately place ALL un-placed
+      // same-generation partners adjacent (recursively, so a partner's own
+      // other partners are nested in too). This keeps multi-marriages
+      // grouped as branches around the shared central ancestor instead of
+      // scattering extra spouses across the row.
       final placed = <String>{};
       final finalOrder = <String>[];
-      for (final id in rowIds) {
-        if (placed.contains(id)) continue;
-        finalOrder.add(id);
+
+      void addWithPartners(String id) {
+        if (placed.contains(id)) return;
         placed.add(id);
+        finalOrder.add(id);
         final candidates = (partners[id] ?? const <String>[])
             .where((pid) =>
                 !placed.contains(pid) &&
                 _state.persons[pid]?.generation == g)
             .toList();
-        if (candidates.isNotEmpty) {
-          // Prefer the partner whose own barycenter is closest to this
-          // person's, so we don't yank a partner away from their own
-          // children.
-          final anchor = keyOf(id);
-          candidates.sort((a, b) =>
-              (keyOf(a) - anchor).abs().compareTo((keyOf(b) - anchor).abs()));
-          final pt = candidates.first;
-          finalOrder.add(pt);
-          placed.add(pt);
+        if (candidates.isEmpty) return;
+        // Prefer partners whose own barycenter is closest to this person's
+        // so we don't yank a partner away from their own children.
+        final anchor = keyOf(id);
+        candidates.sort((a, b) =>
+            (keyOf(a) - anchor).abs().compareTo((keyOf(b) - anchor).abs()));
+        for (final pt in candidates) {
+          addWithPartners(pt);
         }
+      }
+
+      for (final id in rowIds) {
+        addWithPartners(id);
       }
       orderByGen[g] = finalOrder;
 
@@ -752,6 +784,106 @@ class GenogramProvider extends ChangeNotifier {
     _selectedRelationshipId = null;
     _connectSourceId = null;
     _mode = AppMode.select;
+    notifyListeners();
+  }
+
+  /// Merge an incoming [GenogramState] into the current one.
+  ///
+  /// [personIdMap] maps incoming person IDs -> existing person IDs for entries
+  /// that the caller has decided are the same person. Unmapped incoming
+  /// persons are inserted as new entries with freshly allocated IDs.
+  ///
+  /// Matched persons keep their existing data, but missing scalar fields
+  /// (birthYear, deathYear, notes) on the existing record are filled in
+  /// from the incoming record when available.
+  ///
+  /// Relationships are remapped through the combined ID map. Relationships
+  /// that would duplicate an existing relationship (same source/target/type,
+  /// either direction for symmetric structural ties) are skipped.
+  void mergeImport(GenogramState incoming, Map<String, String> personIdMap) {
+    _pushUndo();
+
+    var nextId = _state.nextId;
+    String allocId() {
+      final id = '$nextId';
+      nextId += 1;
+      return id;
+    }
+
+    final mergedPersons = Map<String, Person>.from(_state.persons);
+    final idMap = <String, String>{}; // incoming person id -> final id
+
+    // Matched persons first: keep existing, optionally fill missing fields.
+    for (final entry in personIdMap.entries) {
+      final inc = incoming.persons[entry.key];
+      final existing = mergedPersons[entry.value];
+      if (inc == null || existing == null) continue;
+      idMap[entry.key] = entry.value;
+      mergedPersons[entry.value] = existing.copyWith(
+        birthYear: existing.birthYear ?? inc.birthYear,
+        deathYear: existing.deathYear ?? inc.deathYear,
+        notes: existing.notes.isEmpty ? inc.notes : existing.notes,
+      );
+    }
+
+    // Unmatched incoming persons -> insert as new.
+    // Offset positions so they don't overlap existing nodes.
+    var insertedCount = 0;
+    for (final entry in incoming.persons.entries) {
+      if (idMap.containsKey(entry.key)) continue;
+      if (mergedPersons.length >= GenogramState.maxNodes) break;
+      final newId = 'p${allocId()}';
+      idMap[entry.key] = newId;
+      final p = entry.value;
+      mergedPersons[newId] = p.copyWith(
+        id: newId,
+        position: p.position + Offset(40.0 * (insertedCount % 8), 40.0 * (insertedCount ~/ 8)),
+      );
+      insertedCount += 1;
+    }
+
+    // Build a set of signatures for existing relationships to dedupe.
+    String relSig(String s, String t, RelationshipType type) {
+      // Treat structural pair ties as undirected.
+      const undirected = {
+        RelationshipType.married,
+        RelationshipType.partnership,
+        RelationshipType.separated,
+        RelationshipType.divorced,
+        RelationshipType.engaged,
+        RelationshipType.sibling,
+      };
+      if (undirected.contains(type)) {
+        final pair = [s, t]..sort();
+        return '${pair[0]}|${pair[1]}|${type.name}';
+      }
+      return '$s|$t|${type.name}';
+    }
+
+    final mergedRels = Map<String, Relationship>.from(_state.relationships);
+    final existingSigs = <String>{
+      for (final r in mergedRels.values) relSig(r.sourceId, r.targetId, r.type),
+    };
+
+    for (final r in incoming.relationships.values) {
+      final s = idMap[r.sourceId];
+      final t = idMap[r.targetId];
+      if (s == null || t == null) continue;
+      final sig = relSig(s, t, r.type);
+      if (existingSigs.contains(sig)) continue;
+      final newId = 'r${allocId()}';
+      mergedRels[newId] = r.copyWith(id: newId, sourceId: s, targetId: t);
+      existingSigs.add(sig);
+    }
+
+    _state = _state.copyWith(
+      persons: mergedPersons,
+      relationships: mergedRels,
+      nextId: nextId,
+    );
+    _selectedPersonId = null;
+    _selectedRelationshipId = null;
+    _connectSourceId = null;
     notifyListeners();
   }
 
