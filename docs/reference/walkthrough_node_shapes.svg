@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-60.0 -60.0 532.0 202.0" width="532" height="202">
+<title>Node shapes: male, female, unknown, index person</title>
+<rect x="-60.0" y="-60.0" width="532.0" height="202.0" fill="#0D0F14"/>
+<rect x="0.0" y="0.0" width="52.0" height="52.0" fill="#4F9EFF" stroke="#1E2330" stroke-width="2.0" rx="4"/><text x="26.0" y="68.0" fill="#E8ECF0" font-family="Helvetica, Arial, sans-serif" font-size="12" text-anchor="middle">Male</text>
+<circle cx="146.0" cy="26.0" r="26.0" fill="#FF6B9D" stroke="#1E2330" stroke-width="2.0"/><text x="146.0" y="68.0" fill="#E8ECF0" font-family="Helvetica, Arial, sans-serif" font-size="12" text-anchor="middle">Female</text>
+<polygon points="266.0,0.0 292.0,26.0 266.0,52.0 240.0,26.0" fill="#A0AEC0" stroke="#1E2330" stroke-width="2.0"/><text x="266.0" y="68.0" fill="#E8ECF0" font-family="Helvetica, Arial, sans-serif" font-size="12" text-anchor="middle">Unknown</text>
+<circle cx="386.0" cy="26.0" r="26.0" fill="#FF6B9D" stroke="#FFC83D" stroke-width="4.0"/><text x="386.0" y="68.0" fill="#E8ECF0" font-family="Helvetica, Arial, sans-serif" font-size="12" text-anchor="middle">Index Person</text>
+</svg>

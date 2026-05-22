@@ -53,6 +53,87 @@
 
 ---
 
+## Visual Walkthrough
+
+A quick tour of what the app does. All images below are auto-generated from the
+in-app data models by [test/generate_reference_svgs_test.dart](test/generate_reference_svgs_test.dart),
+so they stay in sync with the code.
+
+### 1. Add people — three Bowen gender shapes + a gold "index person"
+
+<p align="center">
+  <img src="docs/reference/walkthrough_node_shapes.svg" alt="Male square, female circle, unknown diamond, and the gold-highlighted index person" width="640">
+</p>
+
+Tap **+ Male**, **+ Female**, or **+ ?** in the toolbar (or use the **+** FAB
+for the expandable quick-add menu). Mark exactly one person as the *index
+person* in the edit sheet — they render in gold with a thicker outline and
+an `IP` letter below the shape. That is the focal point of the chart.
+
+### 2. Edit a person — birth/death years, markers, notes
+
+<p align="center">
+  <img src="docs/reference/walkthrough_deceased.svg" alt="A living male and a deceased female with a diagonal line through the shape" width="360">
+</p>
+
+Double-tap any node to open the edit sheet. Set the birth year, death year
+(adds the diagonal deceased overlay automatically), gender, generation, notes,
+and toggle markers: substance abuse, mental illness, physical illness, abuse
+perpetrator/victim, adopted, foster, index person. Long-press for a quick
+context menu instead.
+
+### 3. Connect people — structural and emotional ties
+
+<p align="center">
+  <img src="docs/reference/walkthrough_relationship_gallery.svg" alt="Gallery of structural and emotional relationship line styles" width="720">
+</p>
+
+1. Tap **Link** in the toolbar.
+2. Tap the source person (orange ring appears).
+3. Tap the target person.
+4. Pick a relationship type from the bottom sheet — 15+ types across
+   *structural* (marriage, divorce, separation, partnership, parent-child),
+   *positive* (love, friendship, harmony, fused), *negative* (hostile,
+   discord, cutoff, distant), *violence*, *abuse*, and *control* categories.
+
+### 4. Lay out a family — the painter routes couples + children automatically
+
+<p align="center">
+  <img src="docs/reference/walkthrough_nuclear_family.svg" alt="A married couple with descent line dropping into a sibling bar across two children, daughter rendered as the gold index person" width="360">
+</p>
+
+When two people are married or partnered, you only need to author the
+`parentChild` links to each kid — the painter drops a single descent line
+from the midpoint of the couple into a shared sibling bar.
+
+### 5. Auto-layout by generation
+
+Set each person's **Generation** field (`0` = focal, `-1` = parents, `-2` =
+grandparents, `1` = children, `2` = grandchildren), then tap **Layout** →
+**Fit**. The full demo dataset that ships with the app:
+
+<p align="center">
+  <img src="docs/reference/demo_genogram.svg" alt="Three-generation demo genogram: grandparents, parents and aunt, index person Susan with siblings and spouse, two grandchildren" width="900">
+</p>
+
+…and a 2-hop focused view centred on the index person (Susan):
+
+<p align="center">
+  <img src="docs/reference/demo_genogram_focus_susan.svg" alt="Demo genogram focused on the index person and her two-hop neighbours" width="900">
+</p>
+
+### 6. Export & import
+
+- **Export JSON** — share/save a `.json` backup of the entire chart.
+- **Import JSON** — load any previously exported `.json` (or hand-write one
+  using the schema in [Bulk authoring via JSON](#bulk-authoring-via-json)).
+- **Export PDF** — opens the native print/share dialog with a rendered PDF
+  including a legend strip.
+
+Pan, pinch-zoom, drag nodes, marquee-select groups — all touch-first.
+
+---
+
 ## Features
 
 - Full Bowen standard node symbols: male (square), female (circle), unknown (diamond)

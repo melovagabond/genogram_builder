@@ -117,6 +117,19 @@ String _nodeSvg(Person p) {
       'r="${_nodeRadius.toStringAsFixed(1)}" fill="$fill" stroke="$stroke" '
       'stroke-width="$strokeWidth"/>',
     );
+  } else if (p.gender == Gender.unknown) {
+    // Diamond: rotated square centred on the node.
+    final cx = c.dx;
+    final cy = c.dy;
+    final r = _nodeRadius;
+    final points = '${cx.toStringAsFixed(1)},${(cy - r).toStringAsFixed(1)} '
+        '${(cx + r).toStringAsFixed(1)},${cy.toStringAsFixed(1)} '
+        '${cx.toStringAsFixed(1)},${(cy + r).toStringAsFixed(1)} '
+        '${(cx - r).toStringAsFixed(1)},${cy.toStringAsFixed(1)}';
+    buf.write(
+      '<polygon points="$points" fill="$fill" stroke="$stroke" '
+      'stroke-width="$strokeWidth"/>',
+    );
   } else {
     final x = p.position.dx;
     final y = p.position.dy;
@@ -315,4 +328,186 @@ void main() {
     stdout.writeln('Wrote ${focusFile.path} '
         '(${fPersons.length} persons, ${fRels.length} rels)');
   });
+
+  test('generates README walkthrough SVG snippets', () {
+    final outDir = Directory('docs/reference');
+    if (!outDir.existsSync()) outDir.createSync(recursive: true);
+
+    void write(String name, String svg) {
+      final f = File('${outDir.path}/$name');
+      f.writeAsStringSync(svg);
+      expect(f.lengthSync(), greaterThan(128));
+      stdout.writeln('Wrote ${f.path}');
+    }
+
+    // ---- 1. Node shapes: male / female / unknown / index person ----
+    {
+      const male = Person(
+        id: 's1', name: 'Male', gender: Gender.male,
+        position: Offset(0, 0),
+      );
+      const female = Person(
+        id: 's2', name: 'Female', gender: Gender.female,
+        position: Offset(120, 0),
+      );
+      const unknown = Person(
+        id: 's3', name: 'Unknown', gender: Gender.unknown,
+        position: Offset(240, 0),
+      );
+      const index = Person(
+        id: 's4', name: 'Index Person', gender: Gender.female,
+        markers: PersonMarkers(indexPerson: true),
+        position: Offset(360, 0),
+      );
+      final persons = {for (final p in [male, female, unknown, index]) p.id: p};
+      write(
+        'walkthrough_node_shapes.svg',
+        renderSvg(
+          persons: persons,
+          relationships: const {},
+          title: 'Node shapes: male, female, unknown, index person',
+        ),
+      );
+    }
+
+    // ---- 2. Deceased overlay ----
+    {
+      const alive = Person(
+        id: 's1', name: 'Alive', gender: Gender.male,
+        birthYear: 1980,
+        position: Offset(0, 0),
+      );
+      const deceased = Person(
+        id: 's2', name: 'Deceased', gender: Gender.female,
+        birthYear: 1942, deathYear: 2018,
+        position: Offset(140, 0),
+      );
+      final persons = {for (final p in [alive, deceased]) p.id: p};
+      write(
+        'walkthrough_deceased.svg',
+        renderSvg(
+          persons: persons,
+          relationships: const {},
+          title: 'Deceased overlay',
+        ),
+      );
+    }
+
+    // ---- 3. Nuclear family (auto-routed descent + sibling bar) ----
+    {
+      const dad = Person(
+        id: 'dad', name: 'John', gender: Gender.male,
+        birthYear: 1975, generation: -1,
+        position: Offset(0, 0),
+      );
+      const mom = Person(
+        id: 'mom', name: 'Jane', gender: Gender.female,
+        birthYear: 1977, generation: -1,
+        position: Offset(140, 0),
+      );
+      const kid1 = Person(
+        id: 'k1', name: 'Alex', gender: Gender.female,
+        birthYear: 2005, generation: 0,
+        markers: PersonMarkers(indexPerson: true),
+        position: Offset(10, 160),
+      );
+      const kid2 = Person(
+        id: 'k2', name: 'Sam', gender: Gender.male,
+        birthYear: 2008, generation: 0,
+        position: Offset(130, 160),
+      );
+      final persons = {for (final p in [dad, mom, kid1, kid2]) p.id: p};
+      const rels = <Relationship>[
+        Relationship(id: 'r1', sourceId: 'dad', targetId: 'mom',
+            type: RelationshipType.married),
+        Relationship(id: 'r2', sourceId: 'dad', targetId: 'k1',
+            type: RelationshipType.parentChild),
+        Relationship(id: 'r3', sourceId: 'mom', targetId: 'k1',
+            type: RelationshipType.parentChild),
+        Relationship(id: 'r4', sourceId: 'dad', targetId: 'k2',
+            type: RelationshipType.parentChild),
+        Relationship(id: 'r5', sourceId: 'mom', targetId: 'k2',
+            type: RelationshipType.parentChild),
+      ];
+      write(
+        'walkthrough_nuclear_family.svg',
+        renderSvg(
+          persons: persons,
+          relationships: {for (final r in rels) r.id: r},
+          title: 'Nuclear family: married couple + two children',
+        ),
+      );
+    }
+
+    // ---- 4. Relationship line gallery ----
+    {
+      // Lay out pairs in a grid, label between them via a synthetic
+      // "label person" entry isn't easy — instead inject <text> after
+      // renderSvg by post-processing the buffer.
+      const types = <RelationshipType>[
+        RelationshipType.married,
+        RelationshipType.divorced,
+        RelationshipType.separated,
+        RelationshipType.partnership,
+        RelationshipType.love,
+        RelationshipType.friendship,
+        RelationshipType.distant,
+        RelationshipType.hostile,
+        RelationshipType.cutoff,
+        RelationshipType.indifferent,
+      ];
+      const cols = 2;
+      const cellW = 320.0;
+      const cellH = 130.0;
+      final persons = <String, Person>{};
+      final rels = <String, Relationship>{};
+      final labels = <_Label>[];
+      for (var i = 0; i < types.length; i++) {
+        final t = types[i];
+        final col = i % cols;
+        final row = i ~/ cols;
+        final x = col * cellW;
+        final y = row * cellH;
+        final aId = 'a$i';
+        final bId = 'b$i';
+        persons[aId] = Person(
+          id: aId, name: '', gender: Gender.male,
+          position: Offset(x, y),
+        );
+        persons[bId] = Person(
+          id: bId, name: '', gender: Gender.female,
+          position: Offset(x + 180, y),
+        );
+        rels['r$i'] = Relationship(
+          id: 'r$i', sourceId: aId, targetId: bId, type: t,
+        );
+        labels.add(_Label(
+          x: x + (180 + _nodeSize) / 2,
+          y: y - 12,
+          text: kRelationshipDefs[t]?.label ?? t.name,
+        ));
+      }
+      var svg = renderSvg(
+        persons: persons,
+        relationships: rels,
+        title: 'Relationship line gallery',
+      );
+      // Inject labels before </svg>.
+      final labelSvg = labels
+          .map((l) => '<text x="${l.x.toStringAsFixed(1)}" '
+              'y="${l.y.toStringAsFixed(1)}" fill="$_labelColor" '
+              'font-family="Helvetica, Arial, sans-serif" font-size="11" '
+              'text-anchor="middle">${_escape(l.text)}</text>')
+          .join('\n');
+      svg = svg.replaceFirst('</svg>', '$labelSvg\n</svg>');
+      write('walkthrough_relationship_gallery.svg', svg);
+    }
+  });
+}
+
+class _Label {
+  final double x;
+  final double y;
+  final String text;
+  const _Label({required this.x, required this.y, required this.text});
 }
