@@ -6,11 +6,30 @@
 
 *Touch-optimized for Android tablets — with iOS, web, and desktop on the way.*
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](#-license)
+[![License: MIT](https://img.shields.io/github/license/melovagabond/genogram_builder?color=yellow)](#-license)
 [![Flutter](https://img.shields.io/badge/Flutter-3.10%2B-02569B?logo=flutter)](https://flutter.dev)
 [![Dart](https://img.shields.io/badge/Dart-3.0%2B-0175C2?logo=dart)](https://dart.dev)
 [![Platform](https://img.shields.io/badge/platform-Android%20%7C%20iOS%20%7C%20Web%20%7C%20Desktop-brightgreen)](#)
+
+[![GitHub release](https://img.shields.io/github/v/release/melovagabond/genogram_builder?include_prereleases&logo=github&sort=semver)](https://github.com/melovagabond/genogram_builder/releases)
+[![GitHub release date](https://img.shields.io/github/release-date/melovagabond/genogram_builder?logo=github)](https://github.com/melovagabond/genogram_builder/releases)
+[![Downloads](https://img.shields.io/github/downloads/melovagabond/genogram_builder/total?logo=github&color=brightgreen)](https://github.com/melovagabond/genogram_builder/releases)
+[![Last commit](https://img.shields.io/github/last-commit/melovagabond/genogram_builder/develop?logo=git)](https://github.com/melovagabond/genogram_builder/commits/develop)
+
+[![Stars](https://img.shields.io/github/stars/melovagabond/genogram_builder?style=social)](https://github.com/melovagabond/genogram_builder/stargazers)
+[![Forks](https://img.shields.io/github/forks/melovagabond/genogram_builder?style=social)](https://github.com/melovagabond/genogram_builder/network/members)
+[![Watchers](https://img.shields.io/github/watchers/melovagabond/genogram_builder?style=social)](https://github.com/melovagabond/genogram_builder/watchers)
+
+[![Issues](https://img.shields.io/github/issues/melovagabond/genogram_builder?logo=github)](https://github.com/melovagabond/genogram_builder/issues)
+[![Pull requests](https://img.shields.io/github/issues-pr/melovagabond/genogram_builder?logo=github)](https://github.com/melovagabond/genogram_builder/pulls)
+[![Closed PRs](https://img.shields.io/github/issues-pr-closed/melovagabond/genogram_builder?logo=github&color=8957e5)](https://github.com/melovagabond/genogram_builder/pulls?q=is%3Apr+is%3Aclosed)
+[![Contributors](https://img.shields.io/github/contributors/melovagabond/genogram_builder?logo=github)](https://github.com/melovagabond/genogram_builder/graphs/contributors)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](#-contributing)
+
+[![Repo size](https://img.shields.io/github/repo-size/melovagabond/genogram_builder?logo=github)](https://github.com/melovagabond/genogram_builder)
+[![Code size](https://img.shields.io/github/languages/code-size/melovagabond/genogram_builder?logo=github)](https://github.com/melovagabond/genogram_builder)
+[![Top language](https://img.shields.io/github/languages/top/melovagabond/genogram_builder?logo=dart)](https://github.com/melovagabond/genogram_builder)
+[![Commit activity](https://img.shields.io/github/commit-activity/m/melovagabond/genogram_builder?logo=git)](https://github.com/melovagabond/genogram_builder/pulse)
 
 </div>
 
