@@ -1,7 +1,38 @@
+<div align="center">
+
 # Genogram Builder
 
-A clinical genogram builder implementing the full Bowen standard symbol set.
-Targets Android tablet primarily, with iOS, web, and desktop support planned.
+**A clinical genogram builder implementing the full Bowen standard symbol set.**
+
+*Touch-optimized for Android tablets — with iOS, web, and desktop on the way.*
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](#-license)
+[![Flutter](https://img.shields.io/badge/Flutter-3.10%2B-02569B?logo=flutter)](https://flutter.dev)
+[![Dart](https://img.shields.io/badge/Dart-3.0%2B-0175C2?logo=dart)](https://dart.dev)
+[![Platform](https://img.shields.io/badge/platform-Android%20%7C%20iOS%20%7C%20Web%20%7C%20Desktop-brightgreen)](#)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](#-contributing)
+
+</div>
+
+---
+
+## Download — No Git Required
+
+**Want to just use the app?** You don't need to install Git or build from source.
+
+1. Go to the **[Releases page →](https://github.com/melovagabond/genogram_builder/releases)**
+2. Click the latest release at the top of the list
+3. Scroll down to **Assets** and pick the file for your device:
+
+   | If you're on... | Download this file |
+   |---|---|
+   | 🤖 **Android phone or tablet** | `app-release.apk` (install by tapping it — you may need to allow "install from unknown sources") |
+   | 🍎 **iPhone / iPad** | `Runner.ipa` (requires sideloading — see Apple's instructions) |
+   | 🌐 **Anywhere with a browser** | `web.zip` — unzip and open `index.html`, or host it on any static web server |
+
+> 💡 **New to GitHub?** Releases are the green-tagged versions on the right side of the repo page. The "Code" button is for developers; you want **Releases**.
+
+---
 
 ## Features
 
@@ -15,7 +46,11 @@ Targets Android tablet primarily, with iOS, web, and desktop support planned.
 - PDF export with legend strip
 - 200 person maximum (configurable in `genogram_state.dart`)
 
-## Getting Started
+---
+
+## Getting Started (For Developers)
+
+> Just want to use the app? Skip this — see **[Download — No Git Required](#-download--no-git-required)** above.
 
 ### Prerequisites
 
@@ -61,6 +96,8 @@ flutter build ios --no-codesign
 # Web
 flutter build web --web-renderer canvaskit
 ```
+
+---
 
 ## GitHub Actions CI/CD
 
@@ -119,6 +156,8 @@ base64 -i cert.p12 | pbcopy
 base64 -i profile.mobileprovision | pbcopy
 ```
 
+---
+
 ## Project Structure
 
 ```
@@ -146,6 +185,8 @@ lib/
   constants/
     app_theme.dart             # Colors, sizing constants, ThemeData
 ```
+
+---
 
 ## Usage
 
@@ -177,6 +218,8 @@ lib/
 - **Export JSON**: shares the genogram as a `.json` file (use as backup)
 - **Import JSON**: opens file picker, loads a previously exported `.json`
 - **Export PDF**: opens the print/share dialog with a rendered PDF
+
+---
 
 ## Bulk authoring via JSON
 
@@ -358,6 +401,8 @@ single descent line into the sibling bar.
 - Use the **Select** marquee tool to grab multiple imported nodes and drag
   them as a group.
 
+---
+
 ## Configuration
 
 Change the max node limit in `lib/models/genogram_state.dart`:
@@ -366,6 +411,77 @@ Change the max node limit in `lib/models/genogram_state.dart`:
 static const int maxNodes = 200;
 ```
 
+---
+
+## 🤝 Contributing
+
+Contributions are warmly welcomed — whether it's a typo fix, a new relationship type, a bug report, or a brand-new feature.
+
+### I found a bug / have an idea
+
+Open an **[Issue](https://github.com/melovagabond/genogram_builder/issues/new/choose)**. No special format required — just describe what happened (or what you'd like to see). Screenshots help a lot.
+
+### I want to submit a code change
+
+If you've never contributed to an open-source project before, here's the quick path:
+
+1. **Fork** this repo — click the "Fork" button at the top right of the GitHub page.
+2. **Clone** your fork to your computer:
+   ```bash
+   git clone https://github.com/YOUR-USERNAME/genogram_builder.git
+   cd genogram_builder
+   ```
+3. **Create a branch** for your change:
+   ```bash
+   git checkout -b my-cool-fix
+   ```
+4. **Make your changes**, then run:
+   ```bash
+   flutter pub get
+   flutter analyze
+   flutter test
+   ```
+5. **Commit & push**:
+   ```bash
+   git add .
+   git commit -m "Describe what you changed"
+   git push origin my-cool-fix
+   ```
+6. **Open a Pull Request** — go to your fork on GitHub and click "Compare & pull request". Describe what you changed and why.
+
+### Guidelines
+
+- Keep PRs focused — one feature or fix per PR is easier to review.
+- Match the existing code style; `flutter format .` before committing.
+- If you're adding a new Bowen symbol or relationship type, please cite the clinical reference in the PR.
+- Be kind in reviews and discussion. 💛
+
+---
+
 ## License
 
-MIT
+This project is licensed under the **MIT License** — one of the most permissive open-source licenses available. In short:
+
+✅ You can **use** it (personal, commercial, clinical, whatever)
+✅ You can **modify** it
+✅ You can **distribute** it
+✅ You can **sublicense** it
+⚠️ You must include the original copyright and license notice
+❌ The software is provided "as is" — no warranty
+
+See the full text in [LICENSE](LICENSE).
+
+```
+Copyright (c) 2026 Daevon C. Branche
+MIT License — see LICENSE file for full terms.
+```
+
+---
+
+<div align="center">
+
+**Built with ❤️ and Flutter.**
+
+If this project helps you, consider starring it on [GitHub](https://github.com/melovagabond/genogram_builder) ⭐
+
+</div>

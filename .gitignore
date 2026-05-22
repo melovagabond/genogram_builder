@@ -9,6 +9,7 @@
 .vscode/
 .idea/
 bulk_import.json
+.DS_Store
 
 # Flutter repo-specific
 /bin/cache/
