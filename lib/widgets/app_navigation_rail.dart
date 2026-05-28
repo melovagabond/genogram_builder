@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../providers/genogram_provider.dart';
 import '../constants/app_theme.dart';
 import '../models/person.dart';
+import '../screens/settings_page.dart';
 
 /// Full-height custom sidebar rail. Contains node-add actions, mode selection,
 /// view/layout actions, and the overflow menu.
@@ -399,6 +400,8 @@ class _RailMenuBtn extends StatelessWidget {
         _item('import_json', 'Import JSON'),
         _item('export_pdf', 'Export PDF'),
         const PopupMenuDivider(),
+        _item('settings', 'Settings'),
+        const PopupMenuDivider(),
         _item('legend', 'Legend'),
         const PopupMenuDivider(),
         _item('clear', 'Clear All', danger: true),
@@ -441,15 +444,37 @@ class _RailMenuBtn extends StatelessWidget {
     switch (action) {
       case 'export_json':
         onExportJson();
+        break;
       case 'import_json':
         onImportJson();
+        break;
       case 'export_pdf':
         onExportPdf();
+        break;
+      case 'settings':
+        Navigator.of(context).push(
+          PageRouteBuilder(
+            pageBuilder: (_, __, ___) => const SettingsPage1(),
+            transitionDuration: const Duration(milliseconds: 240),
+            reverseTransitionDuration: const Duration(milliseconds: 200),
+            transitionsBuilder: (_, animation, __, child) {
+              final curved = CurvedAnimation(
+                parent: animation,
+                curve: Curves.easeOutCubic,
+                reverseCurve: Curves.easeInCubic,
+              );
+              return ScaleTransition(scale: curved, child: child);
+            },
+          ),
+        );
+        break;
       case 'legend':
         showDialog(
             context: context, builder: (_) => const _RailLegendDialog());
+        break;
       case 'clear':
         _confirmClear(context);
+        break;
     }
   }
 
