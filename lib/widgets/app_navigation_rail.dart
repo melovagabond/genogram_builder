@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../constants/app_motion.dart';
 import '../providers/genogram_provider.dart';
 import '../constants/app_theme.dart';
 import '../models/person.dart';
@@ -26,6 +29,9 @@ class AppNavigationRail extends StatefulWidget {
 class _AppNavigationRailState extends State<AppNavigationRail>
     with SingleTickerProviderStateMixin {
   bool _addOpen = false;
+  bool _layoutAnimating = false;
+  Timer? _layoutApplyTimer;
+  Timer? _layoutAnimReset;
   late AnimationController _ctrl;
   late Animation<double> _scaleAnim;
 
@@ -34,13 +40,15 @@ class _AppNavigationRailState extends State<AppNavigationRail>
     super.initState();
     _ctrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 180),
+      duration: AppMotion.quick,
     );
     _scaleAnim = CurvedAnimation(parent: _ctrl, curve: Curves.easeOut);
   }
 
   @override
   void dispose() {
+    _layoutApplyTimer?.cancel();
+    _layoutAnimReset?.cancel();
     _ctrl.dispose();
     super.dispose();
   }
@@ -48,6 +56,30 @@ class _AppNavigationRailState extends State<AppNavigationRail>
   void _toggleAdd() {
     setState(() => _addOpen = !_addOpen);
     _addOpen ? _ctrl.forward() : _ctrl.reverse();
+  }
+
+  void _runLayout(GenogramProvider provider) {
+    _layoutApplyTimer?.cancel();
+    _layoutAnimReset?.cancel();
+    setState(() => _layoutAnimating = true);
+
+    // Let the nudge begin before the layout jump so the user can perceive it.
+    _layoutApplyTimer = Timer(AppMotion.layoutApplyDelay, () {
+      if (!mounted) return;
+      provider.runAutoLayout();
+      Future.delayed(AppMotion.layoutFitDelay, () {
+        if (context.mounted) {
+          final s = MediaQuery.of(context).size;
+          provider.fitView(Size(s.width, s.height - 100));
+        }
+      });
+    });
+
+    _layoutAnimReset = Timer(AppMotion.layoutHold, () {
+      if (mounted) {
+        setState(() => _layoutAnimating = false);
+      }
+    });
   }
 
   Size _canvasSize(BuildContext context) {
@@ -88,7 +120,7 @@ class _AppNavigationRailState extends State<AppNavigationRail>
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 150),
+                    duration: AppMotion.quick,
                     child: Icon(
                       _addOpen ? Icons.close : Icons.add,
                       key: ValueKey(_addOpen),
@@ -206,19 +238,17 @@ class _AppNavigationRailState extends State<AppNavigationRail>
               onTap: provider.canUndo ? provider.undo : () {},
             ),
           ),
-          _RailActionBtn(
-            label: 'LAYOUT',
-            icon: Icons.auto_fix_high_outlined,
-            color: kText2,
-            onTap: () {
-              provider.runAutoLayout();
-              Future.delayed(const Duration(milliseconds: 80), () {
-                if (context.mounted) {
-                  final s = MediaQuery.of(context).size;
-                  provider.fitView(Size(s.width, s.height - 100));
-                }
-              });
-            },
+          AnimatedAlign(
+            duration: AppMotion.emphasized,
+            curve: AppMotion.emphasizedCurve,
+            alignment:
+                _layoutAnimating ? const Alignment(0.85, 0) : Alignment.center,
+            child: _RailActionBtn(
+              label: 'LAYOUT',
+              icon: Icons.auto_fix_high_outlined,
+              color: _layoutAnimating ? kAccentOrange : kText2,
+              onTap: () => _runLayout(provider),
+            ),
           ),
           _RailActionBtn(
             label: 'FIT',
@@ -455,13 +485,13 @@ class _RailMenuBtn extends StatelessWidget {
         Navigator.of(context).push(
           PageRouteBuilder(
             pageBuilder: (_, __, ___) => const SettingsPage1(),
-            transitionDuration: const Duration(milliseconds: 240),
-            reverseTransitionDuration: const Duration(milliseconds: 200),
+            transitionDuration: AppMotion.routeForward,
+            reverseTransitionDuration: AppMotion.routeReverse,
             transitionsBuilder: (_, animation, __, child) {
               final curved = CurvedAnimation(
                 parent: animation,
-                curve: Curves.easeOutCubic,
-                reverseCurve: Curves.easeInCubic,
+                curve: AppMotion.standardCurve,
+                reverseCurve: AppMotion.standardCurve,
               );
               return ScaleTransition(scale: curved, child: child);
             },

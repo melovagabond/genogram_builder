@@ -6,6 +6,7 @@ import '../providers/genogram_provider.dart';
 import '../services/export_service.dart';
 import '../services/json_export_service.dart';
 import '../services/import_service.dart';
+import '../constants/app_motion.dart';
 import '../constants/app_theme.dart';
 import '../widgets/canvas_widget.dart';
 import '../widgets/app_navigation_rail.dart';
@@ -27,6 +28,9 @@ class MainScreen extends StatefulWidget {
 }
 
 class _MainScreenState extends State<MainScreen> {
+  static const Duration _overlayAnimDuration = AppMotion.standard;
+  static const Curve _overlayAnimCurve = AppMotion.standardCurve;
+
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<GenogramProvider>();
@@ -48,69 +52,147 @@ class _MainScreenState extends State<MainScreen> {
                   bottom: 0, left: 0, right: 0,
                   child: _StatusBar(provider: provider),
                 ),
-                if (provider.mode == AppMode.connect)
-                  Positioned(
-                    top: 8, left: 0, right: 0,
-                    child: Center(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: kAccentOrange.withOpacity(0.15),
-                          border: Border.all(color: kAccentOrange.withOpacity(0.5)),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          provider.connectSourceId == null
-                              ? 'TAP the SOURCE person'
-                              : 'TAP the TARGET person',
-                          style: const TextStyle(
-                            color: kAccentOrange, fontSize: 12,
-                            fontFamily: 'monospace', letterSpacing: 1,
+                Positioned.fill(
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: AnimatedAlign(
+                      duration: _overlayAnimDuration,
+                      curve: _overlayAnimCurve,
+                      alignment: provider.mode == AppMode.connect
+                          ? Alignment.topCenter
+                          : const Alignment(0, -1.35),
+                      child: AnimatedOpacity(
+                        duration: _overlayAnimDuration,
+                        curve: _overlayAnimCurve,
+                        opacity: provider.mode == AppMode.connect ? 1 : 0,
+                        child: IgnorePointer(
+                          ignoring: provider.mode != AppMode.connect,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: kAccentOrange.withOpacity(0.15),
+                              border: Border.all(color: kAccentOrange.withOpacity(0.5)),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              provider.connectSourceId == null
+                                  ? 'TAP the SOURCE person'
+                                  : 'TAP the TARGET person',
+                              style: const TextStyle(
+                                color: kAccentOrange,
+                                fontSize: 12,
+                                fontFamily: 'monospace',
+                                letterSpacing: 1,
+                              ),
+                            ),
                           ),
                         ),
                       ),
                     ),
                   ),
-                if (provider.mode == AppMode.marquee)
-                  Positioned(
-                    top: 8, left: 0, right: 0,
-                    child: Center(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: kAccentGreen.withOpacity(0.15),
-                          border: Border.all(color: kAccentGreen.withOpacity(0.5)),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          provider.selectedPersonIds.isEmpty
-                              ? 'DRAG to select  /  TAP to toggle'
-                              : '${provider.selectedPersonIds.length} selected',
-                          style: const TextStyle(
-                            color: kAccentGreen, fontSize: 12,
-                            fontFamily: 'monospace', letterSpacing: 1,
+                ),
+                Positioned.fill(
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: AnimatedAlign(
+                      duration: _overlayAnimDuration,
+                      curve: _overlayAnimCurve,
+                      alignment: provider.mode == AppMode.marquee
+                          ? Alignment.topCenter
+                          : const Alignment(0, -1.35),
+                      child: AnimatedOpacity(
+                        duration: _overlayAnimDuration,
+                        curve: _overlayAnimCurve,
+                        opacity: provider.mode == AppMode.marquee ? 1 : 0,
+                        child: IgnorePointer(
+                          ignoring: provider.mode != AppMode.marquee,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: kAccentGreen.withOpacity(0.15),
+                              border: Border.all(color: kAccentGreen.withOpacity(0.5)),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              provider.selectedPersonIds.isEmpty
+                                  ? 'DRAG to select  /  TAP to toggle'
+                                  : '${provider.selectedPersonIds.length} selected',
+                              style: const TextStyle(
+                                color: kAccentGreen,
+                                fontSize: 12,
+                                fontFamily: 'monospace',
+                                letterSpacing: 1,
+                              ),
+                            ),
                           ),
                         ),
                       ),
                     ),
                   ),
-                if (provider.selectedPersonIds.isNotEmpty)
-                  Positioned(
-                    bottom: 36, left: 0, right: 0,
-                    child: Center(
-                      child: _MultiSelectActionBar(provider: provider),
+                ),
+                Positioned.fill(
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 36),
+                    child: AnimatedAlign(
+                      duration: _overlayAnimDuration,
+                      curve: _overlayAnimCurve,
+                      alignment: provider.selectedPersonIds.isNotEmpty
+                          ? Alignment.bottomCenter
+                          : const Alignment(0, 1.3),
+                      child: AnimatedOpacity(
+                        duration: _overlayAnimDuration,
+                        curve: _overlayAnimCurve,
+                        opacity: provider.selectedPersonIds.isNotEmpty ? 1 : 0,
+                        child: IgnorePointer(
+                          ignoring: provider.selectedPersonIds.isEmpty,
+                          child: _MultiSelectActionBar(provider: provider),
+                        ),
+                      ),
                     ),
                   ),
-                if (provider.isFocused)
-                  Positioned(
-                    top: 8, left: 0, right: 0,
-                    child: Center(child: _FocusBanner(provider: provider)),
+                ),
+                Positioned.fill(
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: AnimatedAlign(
+                      duration: _overlayAnimDuration,
+                      curve: _overlayAnimCurve,
+                      alignment: provider.isFocused
+                          ? Alignment.topCenter
+                          : const Alignment(0, -1.35),
+                      child: AnimatedOpacity(
+                        duration: _overlayAnimDuration,
+                        curve: _overlayAnimCurve,
+                        opacity: provider.isFocused ? 1 : 0,
+                        child: IgnorePointer(
+                          ignoring: !provider.isFocused,
+                          child: _FocusBanner(provider: provider),
+                        ),
+                      ),
+                    ),
                   ),
-                if (provider.isInspecting)
-                  Positioned(
-                    top: 56, right: 12, bottom: 48,
-                    child: _InspectPanel(provider: provider),
+                ),
+                Positioned.fill(
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 56, right: 12, bottom: 48),
+                    child: AnimatedAlign(
+                      duration: _overlayAnimDuration,
+                      curve: _overlayAnimCurve,
+                      alignment: provider.isInspecting
+                          ? Alignment.centerRight
+                          : const Alignment(1.25, 0),
+                      child: AnimatedOpacity(
+                        duration: _overlayAnimDuration,
+                        curve: _overlayAnimCurve,
+                        opacity: provider.isInspecting ? 1 : 0,
+                        child: IgnorePointer(
+                          ignoring: !provider.isInspecting,
+                          child: _InspectPanel(provider: provider),
+                        ),
+                      ),
+                    ),
                   ),
+                ),
                 Positioned(
                   right: 12, bottom: 96,
                   child: _ZoomControls(provider: provider),
